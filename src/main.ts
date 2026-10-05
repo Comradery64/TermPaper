@@ -234,6 +234,8 @@ function applyRuling() {
   sheet.style.setProperty("--cover", `${cell}px`);
   const top = Math.round(el.getBoundingClientRect().top - sheet.getBoundingClientRect().top);
   sheet.style.setProperty("--rule", `${cell}px`);
+  // baseline rests just above the rule: 1/3 em, tuned as 5px at 15px type
+  sheet.style.setProperty("--baseline-shift", `${Math.round((term.options.fontSize ?? 15) / 3)}px`);
   sheet.style.setProperty("--rule-offset", `${top + cell - 1}px`);
 }
 
