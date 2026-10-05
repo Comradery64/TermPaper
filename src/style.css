@@ -142,6 +142,8 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
   background-clip: content-box;
 }
 .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover { background-color: rgba(28, 42, 96, 0.4); }
+/* hidden until the pointer comes within 8% of the right edge (main.ts toggles .near-scroll) */
+#term:not(.near-scroll) .xterm-viewport::-webkit-scrollbar-thumb { background-color: transparent; }
 
 /* pen-stroke overlay for typed characters */
 #pen { position: absolute; inset: 0; pointer-events: none; opacity: 0.93; z-index: 3; }

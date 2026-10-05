@@ -127,6 +127,11 @@ function watchTrafficLights() {
   invoke("traffic_lights", { visible: false, duration: 0 }); shown = false;
 }
 
+/** The scrollbar shows only while the pointer is within 8% of the right edge. */
+const SCROLL_ZONE = 0.08;
+document.addEventListener("mousemove", (e) => el.classList.toggle("near-scroll", e.clientX >= innerWidth * (1 - SCROLL_ZONE)));
+document.addEventListener("mouseleave", () => el.classList.remove("near-scroll"));
+
 /** Hide the cursor while typing; it returns after a short pause. */
 let idleTimer: number | undefined;
 function noteTyping() {
