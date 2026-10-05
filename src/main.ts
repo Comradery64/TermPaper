@@ -25,6 +25,15 @@ const DEFAULT_SIZE = 15;
 const wanted = new URLSearchParams(location.search).get("font") ?? prefs.font;
 let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
 
+/**
+ * Load every weight/style of the font up front. A face that loads on first use leaves its
+ * text invisible until it arrives, so a TUI repainting bold/italic text flashes meanwhile.
+ */
+function loadFaces() {
+  return Promise.all(["", "bold ", "italic ", "italic bold "].map((v) =>
+    document.fonts.load(`${v}15px "${font.family}"`).catch(() => [])));
+}
+
 function fontStack() { return `"${font.family}", monospace`; }
 
 /** xterm colors from the ink theme; ink is palette blue, graphite the default foreground. */
@@ -79,7 +88,7 @@ term.onWriteParsed(() => inputHl.update());
 
 async function main() {
   await Promise.all([
-    document.fonts.load(`15px "${font.family}"`),
+    loadFaces(),
     loadPen(font.pen).catch((e) => console.warn("pen strokes", e)),
   ]);
   term.open(el);
@@ -186,7 +195,7 @@ function setSize(size: number) {
 async function setFont(key: string) {
   font = FONTS.find((f) => f.key === key) ?? font;
   prefs.font = font.key; savePrefs();
-  await Promise.all([document.fonts.load(`15px "${font.family}"`), loadPen(font.pen).catch((e) => console.warn("pen strokes", e))]);
+  await Promise.all([loadFaces(), loadPen(font.pen).catch((e) => console.warn("pen strokes", e))]);
   term.options.fontFamily = fontStack();
   fit.fit(); applyRuling();
 }
