@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
+import { loadPenFont, penWrite } from "./pen";
 
 const USE_WEBGL = false;
 const INK = "rgba(28, 42, 96, 0.88)";       // fountain-pen blue
@@ -39,7 +40,10 @@ term.loadAddon(fit);
 const el = document.getElementById("term")!;
 
 async function main() {
-  await document.fonts.load('15px "Monaspace Radon"');
+  await Promise.all([
+    document.fonts.load('15px "Monaspace Radon"'),
+    loadPenFont("/fonts/monaspace-radon-latin-400-normal.ttf").catch((e) => console.warn("pen font", e)),
+  ]);
   term.open(el);
   // DOM renderer on purpose: glyphs are real text, so the ink-on-paper
   // shadows are plain CSS. WebKit drops CSS filters on the WebGL canvas layer.
@@ -51,7 +55,7 @@ async function main() {
 
   const onData = new Channel<Uint8Array>();
   const dec = new TextDecoder();
-  onData.onmessage = (bytes) => term.write(inkify(dec.decode(new Uint8Array(bytes), { stream: true })));
+  onData.onmessage = (bytes) => enqueue(inkify(dec.decode(new Uint8Array(bytes), { stream: true })));
 
   await invoke("spawn", { cols: term.cols, rows: term.rows, onData });
 
@@ -104,6 +108,17 @@ const INK_SGR = "\x1b[38;2;28;42;96m";
 const RESET_SGR = "\x1b[39m";
 let carry = "";
 let ready = false;
+let typing = false;   // between the B (input start) and C (output start) marks
+
+/** Writes stay in order; a typed-character echo is held while its pen stroke plays. */
+let queue: Promise<void> = Promise.resolve();
+function enqueue(s: string) {
+  if (!s) return;
+  queue = queue.then(() => {
+    const hold = typing && /^[\x20-\x7e]{1,4}$/.test(s) ? penWrite(term, s, INK) : 0;
+    return new Promise<void>((r) => setTimeout(() => { term.write(s); r(); }, hold));
+  });
+}
 function inkify(chunk: string): string {
   let s = carry + chunk;
   carry = "";
@@ -113,6 +128,7 @@ function inkify(chunk: string): string {
   }
   s = s.replace(/\x1b\]133;([ABCD])(?:;[^\x07\x1b]*)?(?:\x07|\x1b\\)/g, (_, m) => {
     if (m === "A") ready = true;
+    typing = m === "B";
     return m === "B" ? INK_SGR : m === "A" || m === "C" ? RESET_SGR : "";
   });
   return s.replace(/\x1b\[([0-9;]*)m/g, remapSgr);
