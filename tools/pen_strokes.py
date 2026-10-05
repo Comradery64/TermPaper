@@ -5,16 +5,17 @@ the skeleton into segments at junctions, chain segments into pen strokes
 (continue through a junction along the straightest path), order strokes the
 way a hand would (top-left first), and emit em-relative polylines.
 
-Output: public/pen-strokes.json  { "w": nib width (em), "glyphs": { "a": [[[x,y],...], ...] } }
-Run: /tmp/texenv/bin/python tools/pen_strokes.py
+Output: public/<out>  { "w": nib width (em), "asc"/"desc": hhea metrics (em), "glyphs": { "a": [[[x,y],...], ...] } }
+Run: /tmp/texenv/bin/python tools/pen_strokes.py [font.ttf out.json]
 """
-import json, math
+import json, math, sys
+from fontTools.ttLib import TTFont
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 from skimage.morphology import skeletonize
 
-FONT = "Monaspace Radon/monaspace-radon-latin-400-normal.ttf"
+FONT, OUT = sys.argv[1:3] if len(sys.argv) > 2 else ("Monaspace Radon/monaspace-radon-latin-400-normal.ttf", "pen-strokes.json")
 S = 200          # px per em for rasterizing
 PAD = 60
 font = ImageFont.truetype(FONT, S)
@@ -120,8 +121,11 @@ for code in range(0x21, 0x7f):
         glyph.append([[round((c - PAD) / S, 4), round((r - PAD - S) / S, 4)] for r, c in pts])  # em units, y down from baseline
     out[ch] = glyph
 
-json.dump({"w": round(float(np.median(widths)) / S, 4), "glyphs": out}, open("public/pen-strokes.json", "w"), separators=(",", ":"))
-print("glyphs:", len(out), "nib(em):", round(float(np.median(widths)) / S, 4), "bytes:", __import__("os").path.getsize("public/pen-strokes.json"))
+tt = TTFont(FONT); upm = tt["head"].unitsPerEm
+asc, desc = tt["hhea"].ascent / upm, tt["hhea"].descent / upm
+json.dump({"w": round(float(np.median(widths)) / S, 4), "asc": round(asc, 4), "desc": round(desc, 4), "glyphs": out},
+          open("public/" + OUT, "w"), separators=(",", ":"))
+print(OUT, "glyphs:", len(out), "nib(em):", round(float(np.median(widths)) / S, 4), "asc/desc:", round(asc, 4), round(desc, 4))
 for ch in "aeBk%":
     print(ch, "strokes:", len(out[ch]), [len(s) for s in out[ch]])
 

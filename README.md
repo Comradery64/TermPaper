@@ -23,6 +23,7 @@ Debug: `http://localhost:1420/?pen=slow` plays the handwriting at 1/20 speed.
 | Key | Action |
 |---|---|
 | Cmd/Ctrl + = / − / 0 | Font size up / down / reset (ruling re-locks) |
+| Cmd/Ctrl + Shift + F | Cycle font: Radon → Victor Mono → Victor Cursive → Maple Mono → Maple Cursive (remembered; `?font=maple-cursive` in demo) |
 | Cmd+C / Cmd+V / Cmd+A | Copy / paste / select all (macOS Edit menu) |
 
 ## Shell integration
@@ -42,7 +43,8 @@ src-tauri/src/lib.rs       spawn/write/resize PTY commands, zsh shim install, ma
 src-tauri/shell/zsh/       ZDOTDIR shim (.zshenv, .zshrc)
 tools/paper_texture.py     regenerates public/paper.png
 tools/pen_strokes.py       regenerates public/pen-strokes.json from the Radon TTF
-public/fonts/              Radon woff2 (400, 400 italic, 700)
+public/fonts/              Radon, Victor Mono, Maple Mono woff2
+public/pen-*.json          handwriting strokes per font (tools/pen_strokes.py <ttf> <out>, TTFs in fonts-src/)
 ```
 
 ## Regenerating assets

@@ -9,8 +9,19 @@ const USE_WEBGL = false;
 const INK = "rgba(28, 42, 96, 0.88)";       // fountain-pen blue
 const GRAPHITE = "rgba(36, 38, 46, 0.94)";  // system text: prompt + output
 
+// font choice: Cmd/Ctrl+Shift+F cycles, remembered; ?font=<key> overrides
+const FONTS = [
+  { key: "radon", family: "Monaspace Radon", pen: "/pen-strokes.json" },
+  { key: "victor", family: "Victor Mono", pen: "/pen-victor.json" },
+  { key: "victor-cursive", family: "Victor Mono Cursive", pen: "/pen-victor-cursive.json" },
+  { key: "maple", family: "Maple Mono", pen: "/pen-maple.json" },
+  { key: "maple-cursive", family: "Maple Mono Cursive", pen: "/pen-maple-cursive.json" },
+];
+const wanted = new URLSearchParams(location.search).get("font") ?? localStorage.getItem("font");
+let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
+
 const term = new Terminal({
-  fontFamily: '"Monaspace Radon", monospace',
+  fontFamily: `"${font.family}", monospace`,
   fontSize: 15,
   lineHeight: 1.6,
   allowTransparency: true,
@@ -41,8 +52,8 @@ const el = document.getElementById("term")!;
 
 async function main() {
   await Promise.all([
-    document.fonts.load('15px "Monaspace Radon"'),
-    loadPen("/pen-strokes.json").catch((e) => console.warn("pen strokes", e)),
+    document.fonts.load(`15px "${font.family}"`),
+    loadPen(font.pen).catch((e) => console.warn("pen strokes", e)),
   ]);
   term.open(el);
   // DOM renderer on purpose: glyphs are real text, so the ink-on-paper
@@ -103,7 +114,7 @@ function noteTyping() {
 function demoMode() {
   const prompt = () => enqueue(inkify("\x1b]133;A\x07demo ~ % \x1b]133;B\x07"));
   prompt();
-  (window as any).__tp = { term, enqueue, state: () => ({ typing, ready, pending }) };
+  (window as any).__tp = { term, enqueue, cycleFont, state: () => ({ typing, ready, pending }) };
   term.onData((s) => {
     if (s === "\r") { enqueue(inkify("\x1b]133;C\x07\r\n(demo: no shell)\r\n")); prompt(); }
     else if (s === "\x7f") enqueue("\b \b");
@@ -114,14 +125,23 @@ function demoMode() {
   term.focus();
 }
 
-/** Cmd/Ctrl +/-/0 change font size; everything else passes to xterm. */
+/** Cmd/Ctrl +/-/0 change font size, Cmd/Ctrl+Shift+F cycles fonts; everything else passes to xterm. */
 function zoomKeys(e: KeyboardEvent): boolean {
   if (e.type !== "keydown" || !(e.metaKey || e.ctrlKey)) return true;
+  if (e.shiftKey && e.code === "KeyF") { cycleFont(); return false; }
   const step = e.key === "=" || e.key === "+" ? 1 : e.key === "-" ? -1 : e.key === "0" ? 0 : null;
   if (step === null) return true;
   term.options.fontSize = step === 0 ? 15 : Math.min(32, Math.max(9, term.options.fontSize! + step));
   fit.fit(); applyRuling();
   return false;
+}
+
+async function cycleFont() {
+  font = FONTS[(FONTS.indexOf(font) + 1) % FONTS.length];
+  localStorage.setItem("font", font.key);
+  await Promise.all([document.fonts.load(`15px "${font.family}"`), loadPen(font.pen).catch((e) => console.warn("pen strokes", e))]);
+  term.options.fontFamily = `"${font.family}", monospace`;
+  fit.fit(); applyRuling();
 }
 
 /**

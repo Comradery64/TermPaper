@@ -1,6 +1,6 @@
 /**
  * Handwriting playback for typed characters.
- * Strokes come from public/pen-strokes.json (derived from the Radon glyph
+ * Strokes come from public/pen-*.json (derived from the active font's glyph
  * skeletons by tools/pen_strokes.py): per glyph, an ordered list of polylines
  * in em units relative to the baseline. An invisible pen draws each stroke in
  * turn with a round nib; the real glyph is written when the pen finishes.
@@ -8,7 +8,7 @@
 import type { Terminal } from "@xterm/xterm";
 
 type Stroke = [number, number][];
-let data: { w: number; glyphs: Record<string, Stroke[]> } | null = null;
+let data: { w: number; asc: number; desc: number; glyphs: Record<string, Stroke[]> } | null = null;
 let svg: SVGSVGElement | null = null;
 
 const SPEED_EM_PER_S = 9;   // pen travel speed; ~120 ms for a typical lowercase
@@ -18,6 +18,7 @@ const LIFT_MS = 18;         // pause when the pen lifts between strokes
 const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1;
 
 export async function loadPen(url: string) {
+  data = null;
   data = await (await fetch(url)).json();
 }
 
@@ -82,9 +83,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0)
   return Math.round(t);
 }
 
-let cachedMetrics: { fs: number; asc: number; desc: number } | null = null;
-/** hhea ascender/descender of Monaspace Radon, in em (from the TTF). */
+/** hhea ascender/descender of the active font (from its TTF, via the strokes file), in px. */
 function fontMetrics(fs: number) {
-  if (!cachedMetrics || cachedMetrics.fs !== fs) cachedMetrics = { fs, asc: 0.7825 * fs, desc: -0.2175 * fs };
-  return cachedMetrics;
+  return { asc: data!.asc * fs, desc: data!.desc * fs };
 }
