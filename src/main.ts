@@ -4,13 +4,14 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
 import { loadPen, penWrite } from "./pen";
-import { openSettings } from "./settings";
+import { openSettings, type Changed } from "./settings";
+import { prefs, savePrefs } from "./prefs";
+import { highlightOutput, resetOutputState, InputHighlighter } from "./highlight";
+import { LineNumbers } from "./linenumbers";
 
 const USE_WEBGL = false;
-const INK = "rgba(14, 30, 128, 0.92)";       // fountain-pen blue
-const GRAPHITE = "rgba(36, 38, 46, 0.94)";  // system text: prompt + output
 
-// font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; remembered; ?font=<key> overrides
+// font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; ?font=<key> overrides
 const FONTS = [
   { key: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
   { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
@@ -19,38 +20,55 @@ const FONTS = [
   { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
 ];
 const DEFAULT_SIZE = 15;
-const wanted = new URLSearchParams(location.search).get("font") ?? localStorage.getItem("font");
+const wanted = new URLSearchParams(location.search).get("font") ?? prefs.font;
 let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
 
-const term = new Terminal({
-  fontFamily: `"${font.family}", monospace`,
-  fontSize: Number(localStorage.getItem("fontSize")) || DEFAULT_SIZE,
-  lineHeight: 1.6,
-  allowTransparency: true,
-  cursorBlink: true,
-  cursorStyle: "underline",
-  scrollback: 5000,
-  theme: {
+/** xterm colors from the ink theme; ink is palette blue, graphite the default foreground. */
+function xtermTheme() {
+  const { ink, graphite } = prefs.colors;
+  return {
     background: "rgba(0,0,0,0)",
-    foreground: GRAPHITE,
-    cursor: INK,
+    foreground: graphite,
+    cursor: ink,
     selectionBackground: "#c8e2f5",
     selectionInactiveBackground: "#dde9f3",
     // ink palette for a light page: every color dark enough to read on paper
-    black: GRAPHITE,        brightBlack: "#5a5e6a",
+    black: graphite,        brightBlack: "#5a5e6a",
     red: "#b3261e",         brightRed: "#c62828",
     green: "#2e7d32",       brightGreen: "#1b7f3b",
     yellow: "#8a6d00",      brightYellow: "#946f00",
-    blue: INK,              brightBlue: INK,
+    blue: ink,              brightBlue: ink,
     magenta: "#7b3f8c",     brightMagenta: "#8e3f9e",
     cyan: "#0e6e7c",        brightCyan: "#0f7f90",
     white: "#6b6f7b",       brightWhite: "#3a3d47",
-  },
+  };
+}
+
+const term = new Terminal({
+  fontFamily: `"${font.family}", monospace`,
+  fontSize: prefs.fontSize,
+  lineHeight: 1.6,
+  allowTransparency: true,
+  allowProposedApi: true,   // decorations: typed-command highlighting
+  cursorBlink: true,
+  cursorStyle: "underline",
+  scrollback: 5000,
+  theme: xtermTheme(),
 });
 
 const fit = new FitAddon();
 term.loadAddon(fit);
 const el = document.getElementById("term")!;
+const lines = new LineNumbers(term);
+const inputHl = new InputHighlighter(term);
+// shell marks stay in the stream so these fire at the exact row they belong to
+term.parser.registerOscHandler(133, (data) => {
+  if (data[0] === "A") lines.prompt();
+  else if (data[0] === "B") inputHl.begin();
+  else if (data[0] === "C") inputHl.end();
+  return true;
+});
+term.onWriteParsed(() => inputHl.update());
 
 async function main() {
   await Promise.all([
@@ -58,6 +76,7 @@ async function main() {
     loadPen(font.pen).catch((e) => console.warn("pen strokes", e)),
   ]);
   term.open(el);
+  applyColors();
   // DOM renderer on purpose: glyphs are real text, so the ink-on-paper
   // shadows are plain CSS. WebKit drops CSS filters on the WebGL canvas layer.
   if (USE_WEBGL) {
@@ -116,7 +135,7 @@ function noteTyping() {
 function demoMode() {
   const prompt = () => enqueue(inkify("\x1b]133;A\x07demo ~ % \x1b]133;B\x07"));
   prompt();
-  (window as any).__tp = { term, enqueue, setFont, state: () => ({ typing, ready, pending }) };
+  (window as any).__tp = { term, enqueue, inkify, setFont, state: () => ({ typing, ready, pending }) };
   term.onData((s) => {
     if (s === "\r") { enqueue(inkify("\x1b]133;C\x07\r\n(demo: no shell)\r\n")); prompt(); }
     else if (s === "\x7f") enqueue("\b \b");
@@ -131,30 +150,34 @@ function demoMode() {
 function zoomKeys(e: KeyboardEvent): boolean {
   if (e.type !== "keydown" || !(e.metaKey || e.ctrlKey)) return true;
   if (e.shiftKey && e.code === "KeyF") { setFont(FONTS[(FONTS.indexOf(font) + 1) % FONTS.length].key); return false; }
-  if (e.key === ",") {
-    openSettings({
-      fonts: FONTS,
-      current: () => ({ font: font.key, size: term.options.fontSize! }),
-      setFont, setSize,
-      onClose: () => term.focus(),
-    });
-    return false;
-  }
+  if (e.key === ",") { openSettings(FONTS, settingsChanged, () => term.focus()); return false; }
   const step = e.key === "=" || e.key === "+" ? 1 : e.key === "-" ? -1 : e.key === "0" ? 0 : null;
   if (step === null) return true;
   setSize(step === 0 ? DEFAULT_SIZE : term.options.fontSize! + step);
   return false;
 }
 
+function settingsChanged(what: Changed) {
+  if (what === "font") setFont(prefs.font);
+  else if (what === "fontSize") setSize(prefs.fontSize);
+  else if (what === "highlight") inputHl.update();
+  else if (what === "colors") { term.options.theme = xtermTheme(); applyColors(); inputHl.update(); }
+  lines.draw();
+}
+
+function applyColors() {
+  document.documentElement.style.setProperty("--lineno", prefs.colors.lineNumber);
+}
+
 function setSize(size: number) {
-  term.options.fontSize = Math.min(32, Math.max(9, size));
-  localStorage.setItem("fontSize", String(term.options.fontSize));
+  term.options.fontSize = prefs.fontSize = Math.min(32, Math.max(9, size));
+  savePrefs();
   fit.fit(); applyRuling();
 }
 
 async function setFont(key: string) {
   font = FONTS.find((f) => f.key === key) ?? font;
-  localStorage.setItem("font", font.key);
+  prefs.font = font.key; savePrefs();
   await Promise.all([document.fonts.load(`15px "${font.family}"`), loadPen(font.pen).catch((e) => console.warn("pen strokes", e))]);
   term.options.fontFamily = `"${font.family}", monospace`;
   fit.fit(); applyRuling();
@@ -165,11 +188,12 @@ async function setFont(key: string) {
  * A (prompt start) -> graphite, B (command input) -> blue ink, C (output start) -> graphite.
  * A sequence may be split across chunks, so hold back a trailing partial ESC.
  */
-const INK_SGR = "\x1b[38;2;28;42;96m";
+const INK_SGR = "\x1b[34m";   // palette blue = theme ink, so a theme change recolors typed text too
 const RESET_SGR = "\x1b[39m";
 let carry = "";
 let ready = false;
 let typing = false;   // between the B (input start) and C (output start) marks
+let phase: "prompt" | "input" | "output" = "output";
 
 /** Writes stay in order; a typed-character echo is held while its pen stroke plays. */
 let queue: Promise<void> = Promise.resolve();
@@ -181,7 +205,7 @@ function enqueue(s: string) {
     pending--;
     let hold = 0;
     if (typing && /^[\x21-\x7e]{1,4}$/.test(s)) {
-      try { hold = penWrite(term, s, INK, pending); } catch (e) { console.error("pen", e); }
+      try { hold = penWrite(term, s, prefs.colors.ink, pending); } catch (e) { console.error("pen", e); }
     }
     return new Promise<void>((r) => setTimeout(() => { term.write(s); r(); }, hold));
   });
@@ -193,12 +217,19 @@ function inkify(chunk: string): string {
   if (tail !== -1 && isPartialEscape(s.slice(tail))) {
     carry = s.slice(tail); s = s.slice(0, tail);
   }
-  s = s.replace(/\x1b\]133;([ABCD])(?:;[^\x07\x1b]*)?(?:\x07|\x1b\\)/g, (_, m) => {
-    if (m === "A") ready = true;
-    typing = m === "B";
-    return m === "B" ? INK_SGR : m === "A" || m === "C" ? RESET_SGR : "";
-  });
-  return s.replace(/\x1b\[([0-9;]*)m/g, remapSgr);
+  // odd parts are the marks; even parts are text in the current phase
+  return s.split(/(\x1b\]133;[ABCD](?:;[^\x07\x1b]*)?(?:\x07|\x1b\\))/).map((part, i) => {
+    if (i % 2) {
+      const m = part[6];
+      if (m === "A") ready = true;
+      typing = m === "B";
+      if (m !== "D") phase = m === "A" ? "prompt" : m === "B" ? "input" : "output";
+      if (m === "C") resetOutputState();
+      return part + (m === "B" ? INK_SGR : m === "A" || m === "C" ? RESET_SGR : "");
+    }
+    const t = part.replace(/\x1b\[([0-9;]*)m/g, remapSgr);
+    return phase === "output" && prefs.hlOutput ? highlightOutput(t, term) : t;
+  }).join("");
 }
 
 /** True only for an escape sequence that is genuinely cut off at the chunk end. */

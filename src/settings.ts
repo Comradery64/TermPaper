@@ -1,16 +1,12 @@
 /**
- * Settings card (Cmd/Ctrl+,): font and size. Each font is previewed in itself.
- * Choices persist in localStorage; main.ts applies them through the callbacks.
+ * Settings card (Cmd/Ctrl+,). Edits `prefs` in place, saves, and tells main.ts what changed.
  */
-export interface FontChoice { key: string; family: string; label: string }
+import { PRESETS, ROLES, prefs, savePrefs, type LineNumbers } from "./prefs";
 
-export function openSettings(opts: {
-  fonts: FontChoice[];
-  current: () => { font: string; size: number };
-  setFont: (key: string) => void;
-  setSize: (size: number) => void;
-  onClose: () => void;
-}) {
+export interface FontChoice { key: string; family: string; label: string }
+export type Changed = "font" | "fontSize" | "lineNumbers" | "highlight" | "colors";
+
+export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => void, onClose: () => void) {
   if (document.getElementById("settings")) return;
   const back = document.createElement("div");
   back.id = "settings";
@@ -21,29 +17,67 @@ export function openSettings(opts: {
       <div class="fonts"></div>
       <h3>Size</h3>
       <div class="size"><button data-d="-1">−</button><span></span><button data-d="1">+</button></div>
-      <p class="hint">Esc to close</p>
+      <h3>Line numbers</h3>
+      <div class="seg lines">
+        <button data-v="rows">Every row</button><button data-v="commands">Each command</button><button data-v="off">Off</button>
+      </div>
+      <h3>Syntax highlighting</h3>
+      <label class="check"><input type="checkbox" data-k="hlOutput"> Command output</label>
+      <label class="check"><input type="checkbox" data-k="hlInput"> Typed commands <small>(colors what you type)</small></label>
+      <h3>Ink</h3>
+      <div class="seg presets"></div>
+      <div class="colors"></div>
+      <p class="hint">Esc to close · colors apply to new text</p>
     </div>`;
-  const list = back.querySelector(".fonts")!;
-  const sizeLabel = back.querySelector(".size span")!;
-  const render = () => {
-    const { font, size } = opts.current();
-    list.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.key === font));
-    sizeLabel.textContent = `${size}px`;
-  };
-  for (const f of opts.fonts) {
+  const $ = <T extends Element>(q: string) => back.querySelector<T>(q)!;
+  const changed = (what: Changed) => { savePrefs(); onChange(what); render(); };
+
+  for (const f of fonts) {
     const b = document.createElement("button");
     b.dataset.key = f.key;
     b.innerHTML = `<span class="name"></span><span class="sample">The quick brown fox · 0Oo 1lI {}#</span>`;
     b.querySelector(".name")!.textContent = f.label;
     (b.querySelector(".sample") as HTMLElement).style.fontFamily = `"${f.family}", monospace`;
-    b.onclick = () => { opts.setFont(f.key); render(); };
-    list.appendChild(b);
+    b.onclick = () => { prefs.font = f.key; changed("font"); };
+    $(".fonts").appendChild(b);
   }
   back.querySelectorAll<HTMLButtonElement>(".size button").forEach((b) => {
-    b.onclick = () => { opts.setSize(opts.current().size + Number(b.dataset.d)); render(); };
+    b.onclick = () => { prefs.fontSize = Math.min(32, Math.max(9, prefs.fontSize + Number(b.dataset.d))); changed("fontSize"); };
   });
+  back.querySelectorAll<HTMLButtonElement>(".lines button").forEach((b) => {
+    b.onclick = () => { prefs.lineNumbers = b.dataset.v as LineNumbers; changed("lineNumbers"); };
+  });
+  back.querySelectorAll<HTMLInputElement>(".check input").forEach((c) => {
+    c.onchange = () => { (prefs as any)[c.dataset.k!] = c.checked; changed("highlight"); };
+  });
+  for (const [key, p] of Object.entries(PRESETS)) {
+    const b = document.createElement("button");
+    b.dataset.v = key; b.textContent = p.label;
+    b.onclick = () => { prefs.preset = key; prefs.colors = { ...p.colors }; changed("colors"); };
+    $(".presets").appendChild(b);
+  }
+  for (const [role, label] of ROLES) {
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="color" data-role="${role}"><span></span>`;
+    l.querySelector("span")!.textContent = label;
+    const input = l.querySelector("input")!;
+    input.oninput = () => { prefs.colors[role] = input.value; changed("colors"); };
+    $(".colors").appendChild(l);
+  }
 
-  const close = () => { back.remove(); document.removeEventListener("keydown", onKey, true); opts.onClose(); };
+  function render() {
+    back.querySelectorAll<HTMLButtonElement>(".fonts button").forEach((b) => b.classList.toggle("on", b.dataset.key === prefs.font));
+    $(".size span").textContent = `${prefs.fontSize}px`;
+    back.querySelectorAll<HTMLButtonElement>(".lines button").forEach((b) => b.classList.toggle("on", b.dataset.v === prefs.lineNumbers));
+    back.querySelectorAll<HTMLInputElement>(".check input").forEach((c) => (c.checked = (prefs as any)[c.dataset.k!]));
+    // a preset stays lit only while its colors are unedited
+    const same = (k: string) => Object.entries(PRESETS[k].colors).every(([r, v]) => (prefs.colors as any)[r] === v);
+    back.querySelectorAll<HTMLButtonElement>(".presets button").forEach((b) => b.classList.toggle("on", same(b.dataset.v!)));
+    back.querySelectorAll<HTMLInputElement>(".colors input").forEach((i) => (i.value = (prefs.colors as any)[i.dataset.role!]));
+    back.querySelectorAll<HTMLElement>(".fonts .sample").forEach((s) => (s.style.color = prefs.colors.ink));
+  }
+
+  const close = () => { back.remove(); document.removeEventListener("keydown", onKey, true); onClose(); };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape" || ((e.metaKey || e.ctrlKey) && e.key === ",")) { e.preventDefault(); e.stopPropagation(); close(); }
   };
@@ -51,5 +85,5 @@ export function openSettings(opts: {
   document.addEventListener("keydown", onKey, true);
   document.body.appendChild(back);
   render();
-  (list.querySelector("button.on") as HTMLElement | null)?.focus();
+  back.querySelector<HTMLElement>(".fonts button.on")?.focus();
 }
