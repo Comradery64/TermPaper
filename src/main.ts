@@ -15,7 +15,7 @@ const term = new Terminal({
   lineHeight: 1.6,
   allowTransparency: true,
   cursorBlink: true,
-  cursorStyle: "bar",
+  cursorStyle: "underline",
   scrollback: 5000,
   theme: {
     background: "rgba(0,0,0,0)",
@@ -52,6 +52,7 @@ async function main() {
   }
   fit.fit();
   applyRuling();
+  term.onData(noteTyping);   // cursor hides while keys are being typed
 
   if (!("__TAURI_INTERNALS__" in window)) return demoMode();   // plain browser: UI dev only
 
@@ -88,6 +89,14 @@ function watchTrafficLights() {
   document.addEventListener("mousemove", (e) => set(inZone(e)));
   document.addEventListener("mouseleave", () => set(false));
   invoke("traffic_lights", { visible: false, duration: 0 }); shown = false;
+}
+
+/** Hide the cursor while typing; it returns after a short pause. */
+let idleTimer: number | undefined;
+function noteTyping() {
+  el.classList.add("typing");
+  clearTimeout(idleTimer);
+  idleTimer = window.setTimeout(() => el.classList.remove("typing"), 700);
 }
 
 /** No PTY in a plain browser: fake a prompt and local echo so the paper UI can be developed. */

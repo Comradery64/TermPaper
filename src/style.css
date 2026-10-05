@@ -129,3 +129,11 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
 
 /* pen-stroke overlay for typed characters */
 #pen { position: absolute; inset: 0; pointer-events: none; opacity: 0.93; z-index: 3; }
+
+/* underscore cursor in ink; hidden while typing */
+.xterm .xterm-cursor.xterm-cursor-underline { border-bottom-width: 1.5px !important; }
+#term.typing .xterm-cursor {
+  border-color: transparent !important;
+  background-color: transparent !important;
+  outline-color: transparent !important;
+}
