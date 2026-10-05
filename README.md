@@ -23,6 +23,7 @@ Debug: `http://localhost:1420/?pen=slow` plays the handwriting at 1/20 speed.
 | Key | Action |
 |---|---|
 | Cmd/Ctrl + = / − / 0 | Font size up / down / reset (ruling re-locks) |
+| Cmd/Ctrl + , | Settings: font (previewed) and size, remembered |
 | Cmd/Ctrl + Shift + F | Cycle font: Radon → Victor Mono → Victor Cursive → Maple Mono → Maple Cursive (remembered; `?font=maple-cursive` in demo) |
 | Cmd+C / Cmd+V / Cmd+A | Copy / paste / select all (macOS Edit menu) |
 

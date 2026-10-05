@@ -4,25 +4,27 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
 import { loadPen, penWrite } from "./pen";
+import { openSettings } from "./settings";
 
 const USE_WEBGL = false;
 const INK = "rgba(28, 42, 96, 0.88)";       // fountain-pen blue
 const GRAPHITE = "rgba(36, 38, 46, 0.94)";  // system text: prompt + output
 
-// font choice: Cmd/Ctrl+Shift+F cycles, remembered; ?font=<key> overrides
+// font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; remembered; ?font=<key> overrides
 const FONTS = [
-  { key: "radon", family: "Monaspace Radon", pen: "/pen-strokes.json" },
-  { key: "victor", family: "Victor Mono", pen: "/pen-victor.json" },
-  { key: "victor-cursive", family: "Victor Mono Cursive", pen: "/pen-victor-cursive.json" },
-  { key: "maple", family: "Maple Mono", pen: "/pen-maple.json" },
-  { key: "maple-cursive", family: "Maple Mono Cursive", pen: "/pen-maple-cursive.json" },
+  { key: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
+  { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
+  { key: "victor-cursive", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
+  { key: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
+  { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
 ];
+const DEFAULT_SIZE = 15;
 const wanted = new URLSearchParams(location.search).get("font") ?? localStorage.getItem("font");
 let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
 
 const term = new Terminal({
   fontFamily: `"${font.family}", monospace`,
-  fontSize: 15,
+  fontSize: Number(localStorage.getItem("fontSize")) || DEFAULT_SIZE,
   lineHeight: 1.6,
   allowTransparency: true,
   cursorBlink: true,
@@ -114,7 +116,7 @@ function noteTyping() {
 function demoMode() {
   const prompt = () => enqueue(inkify("\x1b]133;A\x07demo ~ % \x1b]133;B\x07"));
   prompt();
-  (window as any).__tp = { term, enqueue, cycleFont, state: () => ({ typing, ready, pending }) };
+  (window as any).__tp = { term, enqueue, setFont, state: () => ({ typing, ready, pending }) };
   term.onData((s) => {
     if (s === "\r") { enqueue(inkify("\x1b]133;C\x07\r\n(demo: no shell)\r\n")); prompt(); }
     else if (s === "\x7f") enqueue("\b \b");
@@ -125,19 +127,33 @@ function demoMode() {
   term.focus();
 }
 
-/** Cmd/Ctrl +/-/0 change font size, Cmd/Ctrl+Shift+F cycles fonts; everything else passes to xterm. */
+/** Cmd/Ctrl +/-/0 font size, Cmd/Ctrl+, settings, Cmd/Ctrl+Shift+F cycles fonts; everything else passes to xterm. */
 function zoomKeys(e: KeyboardEvent): boolean {
   if (e.type !== "keydown" || !(e.metaKey || e.ctrlKey)) return true;
-  if (e.shiftKey && e.code === "KeyF") { cycleFont(); return false; }
+  if (e.shiftKey && e.code === "KeyF") { setFont(FONTS[(FONTS.indexOf(font) + 1) % FONTS.length].key); return false; }
+  if (e.key === ",") {
+    openSettings({
+      fonts: FONTS,
+      current: () => ({ font: font.key, size: term.options.fontSize! }),
+      setFont, setSize,
+      onClose: () => term.focus(),
+    });
+    return false;
+  }
   const step = e.key === "=" || e.key === "+" ? 1 : e.key === "-" ? -1 : e.key === "0" ? 0 : null;
   if (step === null) return true;
-  term.options.fontSize = step === 0 ? 15 : Math.min(32, Math.max(9, term.options.fontSize! + step));
-  fit.fit(); applyRuling();
+  setSize(step === 0 ? DEFAULT_SIZE : term.options.fontSize! + step);
   return false;
 }
 
-async function cycleFont() {
-  font = FONTS[(FONTS.indexOf(font) + 1) % FONTS.length];
+function setSize(size: number) {
+  term.options.fontSize = Math.min(32, Math.max(9, size));
+  localStorage.setItem("fontSize", String(term.options.fontSize));
+  fit.fit(); applyRuling();
+}
+
+async function setFont(key: string) {
+  font = FONTS.find((f) => f.key === key) ?? font;
   localStorage.setItem("font", font.key);
   await Promise.all([document.fonts.load(`15px "${font.family}"`), loadPen(font.pen).catch((e) => console.warn("pen strokes", e))]);
   term.options.fontFamily = `"${font.family}", monospace`;
