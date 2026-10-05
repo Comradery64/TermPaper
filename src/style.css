@@ -137,3 +137,6 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
   background-color: transparent !important;
   outline-color: transparent !important;
 }
+
+/* sit the baseline just above the rule; descenders (p, q, g) cross it like handwriting */
+.xterm .xterm-screen { transform: translateY(2px); }
