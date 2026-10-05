@@ -28,11 +28,6 @@
 @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-Italic.woff2") format("woff2"); font-weight: 400; font-style: normal; }
 @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-BoldItalic.woff2") format("woff2"); font-weight: 700; font-style: normal; }
 
-/* block elements + light box drawing sized to fill the tall cell (tools/block_glyphs.py);
-   listed first in the terminal's font stack so they beat the text font's own glyphs */
-@font-face { font-family: "TermPaper Blocks radon"; src: url("/fonts/blocks-radon.ttf?v=2") format("truetype"); unicode-range: U+2500, U+2502, U+250C, U+2510, U+2514, U+2518, U+251C, U+2524, U+252C, U+2534, U+253C, U+256D-2570, U+2580-2590, U+2594-259F; }
-@font-face { font-family: "TermPaper Blocks victor"; src: url("/fonts/blocks-victor.ttf?v=2") format("truetype"); unicode-range: U+2500, U+2502, U+250C, U+2510, U+2514, U+2518, U+251C, U+2524, U+252C, U+2534, U+253C, U+256D-2570, U+2580-2590, U+2594-259F; }
-@font-face { font-family: "TermPaper Blocks maple"; src: url("/fonts/blocks-maple.ttf?v=2") format("truetype"); unicode-range: U+2500, U+2502, U+250C, U+2510, U+2514, U+2518, U+251C, U+2524, U+252C, U+2534, U+253C, U+256D-2570, U+2580-2590, U+2594-259F; }
 
 :root {
   --paper: #f4f4f4;
@@ -214,3 +209,14 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
   font-variant-numeric: tabular-nums;
 }
 #linenos span { display: block; height: var(--row); line-height: var(--row); }
+
+/* block and box glyphs drawn as geometry (glyphs.ts, from Termink): full cell, rows join */
+.xterm-rows { --stroke: 1.3px; --stroke-heavy: 2.6px; }
+.xterm-rows span.glyph {
+  display: inline-block;
+  vertical-align: top;
+  width: var(--cw);
+  height: 100%;
+  /* a hair wider so neighbouring cells overlap and fractional widths leave no seam */
+  margin-right: -0.4px; padding-right: 0.4px;
+}

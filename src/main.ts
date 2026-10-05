@@ -8,22 +8,23 @@ import { openSettings, type Changed } from "./settings";
 import { prefs, savePrefs } from "./prefs";
 import { highlightOutput, resetOutputState, InputHighlighter } from "./highlight";
 import { LineNumbers } from "./linenumbers";
+import { drawGlyphs } from "./glyphs";
 
 const USE_WEBGL = false;
 
 // font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; ?font=<key> overrides
 const FONTS = [
-  { key: "radon", blocks: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
-  { key: "victor", blocks: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
-  { key: "victor-cursive", blocks: "victor", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
-  { key: "maple", blocks: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
-  { key: "maple-cursive", blocks: "maple", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
+  { key: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
+  { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
+  { key: "victor-cursive", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
+  { key: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
+  { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
 ];
 const DEFAULT_SIZE = 15;
 const wanted = new URLSearchParams(location.search).get("font") ?? prefs.font;
 let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
 
-function fontStack() { return `"TermPaper Blocks ${font.blocks}", "${font.family}", monospace`; }
+function fontStack() { return `"${font.family}", monospace`; }
 
 /** xterm colors from the ink theme; ink is palette blue, graphite the default foreground. */
 function xtermTheme() {
@@ -62,6 +63,7 @@ const fit = new FitAddon();
 term.loadAddon(fit);
 const el = document.getElementById("term")!;
 const lines = new LineNumbers(term);
+drawGlyphs(term, document.getElementById("sheet")!);
 const inputHl = new InputHighlighter(term);
 // shell marks stay in the stream so these fire at the exact row they belong to
 term.parser.registerOscHandler(133, (data) => {
@@ -252,7 +254,7 @@ function isPartialEscape(t: string): boolean {
 const HIGHLIGHT_BG = "48;2;200;226;245";
 const MAX_FG_LUMA = 0.42;
 function remapSgr(seq: string, params: string): string {
-  if (!/(^|;)(7|27|38)(;|$)/.test(params)) return seq;
+  if (!/(^|;)(7|27|38|40|48)(;|$)/.test(params)) return seq;
   const p = params.split(";");
   const out: string[] = [];
   for (let i = 0; i < p.length; i++) {
@@ -263,7 +265,10 @@ function remapSgr(seq: string, params: string): string {
       const rgb = xterm256(+p[i + 2]);
       if (rgb) out.push("38", "2", ...inkClamp(...rgb).map(String)); else out.push("38", "5", p[i + 2]);
       i += 2;
-    } else if ((n === "48" || n === "58") && (p[i + 1] === "2" || p[i + 1] === "5")) {
+    } else if (n === "48" && isDarkBg(p, i)) {
+      out.push("49"); i += p[i + 1] === "2" ? 4 : 2;      // a dark-terminal panel: leave the paper bare
+    } else if (n === "40") out.push("49");
+    else if ((n === "48" || n === "58") && (p[i + 1] === "2" || p[i + 1] === "5")) {
       const len = p[i + 1] === "2" ? 5 : 3;      // keep background/underline runs intact
       out.push(...p.slice(i, i + len)); i += len - 1;
     } else if (n === "7") out.push(HIGHLIGHT_BG);
@@ -271,6 +276,12 @@ function remapSgr(seq: string, params: string): string {
     else out.push(n);
   }
   return `\x1b[${out.join(";")}m`;
+}
+
+/** 48;2;r;g;b or 48;5;n darker than mid-grey: painted for a dark terminal, invisible intent on paper. */
+function isDarkBg(p: string[], i: number): boolean {
+  const rgb = p[i + 1] === "2" ? [+p[i + 2], +p[i + 3], +p[i + 4]] : p[i + 1] === "5" ? (+p[i + 2] === 0 ? [0, 0, 0] : xterm256(+p[i + 2])) : null;
+  return !!rgb && (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 < 0.25;
 }
 
 /** Darken an RGB foreground until its luminance is at most MAX_FG_LUMA. */
