@@ -139,4 +139,4 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
 }
 
 /* sit the baseline just above the rule; descenders (p, q, g) cross it like handwriting */
-.xterm .xterm-screen { transform: translateY(2px); }
+.xterm .xterm-screen { transform: translateY(6px); }
