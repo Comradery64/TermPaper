@@ -180,7 +180,7 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
 #settings .fonts button:hover { background: rgba(159, 203, 234, 0.18); }
 #settings .fonts button.on { background: rgba(200, 226, 245, 0.7); border-color: #9fcbea; }
 #settings .fonts .name { flex: 0 0 150px; }
-#settings .fonts .sample { font-size: 15px; color: rgba(28, 42, 96, 0.88); white-space: nowrap; overflow: hidden; }
+#settings .fonts .sample { font-size: 15px; color: rgba(14, 30, 128, 0.92); white-space: nowrap; overflow: hidden; }
 #settings .size { display: flex; align-items: center; gap: 10px; }
 #settings .size button { width: 28px; height: 24px; background: none; border: 1px solid #c9ccd3; border-radius: 3px; }
 #settings .size span { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }

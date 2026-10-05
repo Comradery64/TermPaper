@@ -7,7 +7,7 @@ import { loadPen, penWrite } from "./pen";
 import { openSettings } from "./settings";
 
 const USE_WEBGL = false;
-const INK = "rgba(28, 42, 96, 0.88)";       // fountain-pen blue
+const INK = "rgba(14, 30, 128, 0.92)";       // fountain-pen blue
 const GRAPHITE = "rgba(36, 38, 46, 0.94)";  // system text: prompt + output
 
 // font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; remembered; ?font=<key> overrides
