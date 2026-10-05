@@ -214,18 +214,24 @@ let phase: "prompt" | "input" | "output" = "output";
 
 /** Writes stay in order; a typed-character echo is held while its pen stroke plays. */
 let queue: Promise<void> = Promise.resolve();
-let pending = 0;
+let pending = 0;   // writes waiting in the queue
+let lastFast: Promise<void> = Promise.resolve();   // settles when xterm has parsed the latest fast-path write
 function enqueue(s: string) {
   if (!s) return;
+  const pen = typing && /^[\x21-\x7e]{1,4}$/.test(s);
+  // xterm keeps writes in order itself; only a pen stroke has to wait (for the cursor to settle)
+  const write = () => { lastFast = new Promise((r) => term.write(s, r)); };
+  if (!pen && pending === 0) return write();
   pending++;
-  queue = queue.then(() => {
-    pending--;
-    let hold = 0;
-    if (typing && /^[\x21-\x7e]{1,4}$/.test(s)) {
-      try { hold = penWrite(term, s, prefs.colors.ink, pending, font.key.endsWith("cursive")); } catch (e) { console.error("pen", e); }
+  queue = queue.then(async () => {
+    if (pen) {
+      await lastFast;   // xterm has parsed everything before this, so the cursor is current
+      let hold = 0;
+      try { hold = penWrite(term, s, prefs.colors.ink, pending - 1, font.key.endsWith("cursive")); } catch (e) { console.error("pen", e); }
+      if (hold) await new Promise((r) => setTimeout(r, hold));
     }
-    // resolve only once xterm has parsed it, so the next pen starts at the updated cursor
-    return new Promise<void>((r) => setTimeout(() => term.write(s, r), hold));
+    write();
+    pending--;
   });
 }
 function inkify(chunk: string): string {
