@@ -209,9 +209,10 @@ function enqueue(s: string) {
     pending--;
     let hold = 0;
     if (typing && /^[\x21-\x7e]{1,4}$/.test(s)) {
-      try { hold = penWrite(term, s, prefs.colors.ink, pending); } catch (e) { console.error("pen", e); }
+      try { hold = penWrite(term, s, prefs.colors.ink, pending, font.key.endsWith("cursive")); } catch (e) { console.error("pen", e); }
     }
-    return new Promise<void>((r) => setTimeout(() => { term.write(s); r(); }, hold));
+    // resolve only once xterm has parsed it, so the next pen starts at the updated cursor
+    return new Promise<void>((r) => setTimeout(() => term.write(s, r), hold));
   });
 }
 function inkify(chunk: string): string {
