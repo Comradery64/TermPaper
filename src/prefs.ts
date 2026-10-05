@@ -33,12 +33,14 @@ export const PRESETS: Record<string, { label: string; colors: Colors }> = {
 };
 
 export type LineNumbers = "rows" | "commands" | "off";
+export type PanelSide = "right" | "left" | "bottom";
 export const prefs = {
   font: "radon",
   fontSize: 15,
   lineNumbers: "rows" as LineNumbers,
   hlOutput: true,
   hlInput: false,
+  panelSide: "right" as PanelSide,
   preset: "fountain",
   colors: { ...PRESETS.fountain.colors } as Colors,
 };
