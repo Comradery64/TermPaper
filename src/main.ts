@@ -9,6 +9,7 @@ import { prefs, savePrefs } from "./prefs";
 import { highlightOutput, resetOutputState, InputHighlighter } from "./highlight";
 import { LineNumbers } from "./linenumbers";
 import { drawGlyphs } from "./glyphs";
+import { overlayScrollbar } from "./scrollbar";
 
 const USE_WEBGL = false;
 
@@ -55,6 +56,7 @@ const term = new Terminal({
   allowProposedApi: true,   // decorations: typed-command highlighting
   cursorBlink: true,
   cursorStyle: "underline",
+  cursorInactiveStyle: "underline",   // unfocused: same underscore, not an outline box
   scrollback: 5000,
   theme: xtermTheme(),
 });
@@ -64,6 +66,7 @@ term.loadAddon(fit);
 const el = document.getElementById("term")!;
 const lines = new LineNumbers(term);
 drawGlyphs(term, document.getElementById("sheet")!);
+const scrollbar = overlayScrollbar(el);
 const inputHl = new InputHighlighter(term);
 // shell marks stay in the stream so these fire at the exact row they belong to
 term.parser.registerOscHandler(133, (data) => {
@@ -80,6 +83,7 @@ async function main() {
     loadPen(font.pen).catch((e) => console.warn("pen strokes", e)),
   ]);
   term.open(el);
+  scrollbar.refresh();
   applyColors();
   // DOM renderer on purpose: glyphs are real text, so the ink-on-paper
   // shadows are plain CSS. WebKit drops CSS filters on the WebGL canvas layer.
@@ -126,11 +130,6 @@ function watchTrafficLights() {
   document.addEventListener("mouseleave", () => set(false));
   invoke("traffic_lights", { visible: false, duration: 0 }); shown = false;
 }
-
-/** The scrollbar shows only while the pointer is within 8% of the right edge. */
-const SCROLL_ZONE = 0.08;
-document.addEventListener("mousemove", (e) => el.classList.toggle("near-scroll", e.clientX >= innerWidth * (1 - SCROLL_ZONE)));
-document.addEventListener("mouseleave", () => el.classList.remove("near-scroll"));
 
 /** Hide the cursor while typing; it returns after a short pause. */
 let idleTimer: number | undefined;
