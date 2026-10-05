@@ -3,7 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
-import { loadPenFont, penWrite } from "./pen";
+import { loadPen, penWrite } from "./pen";
 
 const USE_WEBGL = false;
 const INK = "rgba(28, 42, 96, 0.88)";       // fountain-pen blue
@@ -42,7 +42,7 @@ const el = document.getElementById("term")!;
 async function main() {
   await Promise.all([
     document.fonts.load('15px "Monaspace Radon"'),
-    loadPenFont("/fonts/monaspace-radon-latin-400-normal.ttf").catch((e) => console.warn("pen font", e)),
+    loadPen("/pen-strokes.json").catch((e) => console.warn("pen strokes", e)),
   ]);
   term.open(el);
   // DOM renderer on purpose: glyphs are real text, so the ink-on-paper
@@ -53,10 +53,11 @@ async function main() {
   fit.fit();
   applyRuling();
 
+  if (!("__TAURI_INTERNALS__" in window)) return demoMode();   // plain browser: UI dev only
+
   const onData = new Channel<Uint8Array>();
   const dec = new TextDecoder();
   onData.onmessage = (bytes) => enqueue(inkify(dec.decode(new Uint8Array(bytes), { stream: true })));
-
   await invoke("spawn", { cols: term.cols, rows: term.rows, onData });
 
   // ignore keystrokes until the shell has drawn its first prompt (OSC 133;A),
@@ -89,6 +90,21 @@ function watchTrafficLights() {
   invoke("traffic_lights", { visible: false, duration: 0 }); shown = false;
 }
 
+/** No PTY in a plain browser: fake a prompt and local echo so the paper UI can be developed. */
+function demoMode() {
+  const prompt = () => enqueue(inkify("\x1b]133;A\x07demo ~ % \x1b]133;B\x07"));
+  prompt();
+  (window as any).__tp = { term, enqueue, state: () => ({ typing, ready, pending }) };
+  term.onData((s) => {
+    if (s === "\r") { enqueue(inkify("\x1b]133;C\x07\r\n(demo: no shell)\r\n")); prompt(); }
+    else if (s === "\x7f") enqueue("\b \b");
+    else enqueue(s);
+  });
+  new ResizeObserver(() => { fit.fit(); applyRuling(); }).observe(el);
+  term.attachCustomKeyEventHandler(zoomKeys);
+  term.focus();
+}
+
 /** Cmd/Ctrl +/-/0 change font size; everything else passes to xterm. */
 function zoomKeys(e: KeyboardEvent): boolean {
   if (e.type !== "keydown" || !(e.metaKey || e.ctrlKey)) return true;
@@ -112,10 +128,16 @@ let typing = false;   // between the B (input start) and C (output start) marks
 
 /** Writes stay in order; a typed-character echo is held while its pen stroke plays. */
 let queue: Promise<void> = Promise.resolve();
+let pending = 0;
 function enqueue(s: string) {
   if (!s) return;
+  pending++;
   queue = queue.then(() => {
-    const hold = typing && /^[\x20-\x7e]{1,4}$/.test(s) ? penWrite(term, s, INK) : 0;
+    pending--;
+    let hold = 0;
+    if (typing && /^[\x21-\x7e]{1,4}$/.test(s)) {
+      try { hold = penWrite(term, s, INK, pending); } catch (e) { console.error("pen", e); }
+    }
     return new Promise<void>((r) => setTimeout(() => { term.write(s); r(); }, hold));
   });
 }

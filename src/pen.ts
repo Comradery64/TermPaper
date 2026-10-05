@@ -1,20 +1,24 @@
 /**
- * Pen-stroke reveal for typed characters.
- * Each echoed glyph is held briefly while its outline (from the Radon TTF) is
- * drawn on an SVG overlay at the cursor: a left-to-right wipe of the ink fill
- * plus a pen-tip trace along the outline. Then the real glyph is written.
+ * Handwriting playback for typed characters.
+ * Strokes come from public/pen-strokes.json (derived from the Radon glyph
+ * skeletons by tools/pen_strokes.py): per glyph, an ordered list of polylines
+ * in em units relative to the baseline. An invisible pen draws each stroke in
+ * turn with a round nib; the real glyph is written when the pen finishes.
  */
 import type { Terminal } from "@xterm/xterm";
-import { parse, type Font } from "opentype.js";
 
-const STROKE_MS = 90;   // per character
-const STAGGER_MS = 40;  // extra per additional character in the same chunk
-
-let font: Font | null = null;
+type Stroke = [number, number][];
+let data: { w: number; glyphs: Record<string, Stroke[]> } | null = null;
 let svg: SVGSVGElement | null = null;
 
-export async function loadPenFont(url: string) {
-  font = parse(await (await fetch(url)).arrayBuffer());
+const SPEED_EM_PER_S = 9;   // pen travel speed; ~120 ms for a typical lowercase
+const MIN_MS = 60, MAX_MS = 220;
+const LIFT_MS = 18;         // pause when the pen lifts between strokes
+// debug: open with ?pen=slow to watch strokes at 1/20 speed
+const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1;
+
+export async function loadPen(url: string) {
+  data = await (await fetch(url)).json();
 }
 
 function overlay(term: Terminal): SVGSVGElement | null {
@@ -30,48 +34,57 @@ function overlay(term: Terminal): SVGSVGElement | null {
   return svg;
 }
 
-/**
- * Animate `text` (1–4 printable ASCII chars) at the cursor.
- * Returns how long to hold the real write, in ms (0 = nothing animated).
- */
-export function penWrite(term: Terminal, text: string, ink: string): number {
-  if (!font) return 0;
+/** Write `text` (1–4 printable ASCII chars) by hand at the cursor. Returns the hold in ms. */
+export function penWrite(term: Terminal, text: string, ink: string, backlog = 0): number {
+  if (!data) return 0;
   const dims = (term as any)._core?._renderService?.dimensions?.css?.cell;
   const root = overlay(term);
   if (!dims?.width || !root) return 0;
 
   const fs = term.options.fontSize ?? 15;
-  const upm = font.unitsPerEm;
-  const asc = (font.ascender / upm) * fs;
-  const desc = (font.descender / upm) * fs;          // negative
   const buf = term.buffer.active;
   const rowTop = buf.cursorY * dims.height;
-  const baseline = rowTop + (dims.height - (asc - desc)) / 2 + asc;
+  // baseline: DOM renderer centers the font's content box in the cell
+  const metrics = fontMetrics(fs);
+  const baseline = rowTop + (dims.height - (metrics.asc - metrics.desc)) / 2 + metrics.asc;
+  // write faster when keystrokes are piling up
+  const hurry = (1 + Math.min(3, backlog * 0.5)) / SLOW;
 
-  let total = 0;
-  [...text].forEach((ch, i) => {
-    const x = (buf.cursorX + i) * dims.width;
-    const d = font!.getPath(ch, x, baseline, fs).toPathData(2);
-    if (!d) return;
-    const delay = i * STAGGER_MS;
-    total = Math.max(total, delay + STROKE_MS);
-    drawGlyph(root, d, x, rowTop, dims.width, dims.height, ink, delay);
-  });
-  return total;
+  let t = 0;
+  for (const [i, ch] of [...text].entries()) {
+    const strokes = data.glyphs[ch];
+    if (!strokes) continue;
+    const x0 = (buf.cursorX + i) * dims.width;
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    root.appendChild(g);
+    let last: Animation | null = null;
+    for (const st of strokes) {
+      const pts = st.map(([x, y]) => [x0 + x * fs, baseline + y * fs]);
+      const len = pts.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) : 0), 0);
+      const ms = Math.min(MAX_MS, Math.max(MIN_MS, (len / fs / SPEED_EM_PER_S) * 1000)) / hurry;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pts.map((p, k) => `${k ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(""));
+      path.setAttribute("stroke", ink);
+      path.setAttribute("stroke-width", (data.w * fs).toFixed(2));
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      path.setAttribute("fill", "none");
+      path.setAttribute("pathLength", "1");
+      path.setAttribute("stroke-dasharray", "1");
+      path.setAttribute("stroke-dashoffset", "1");
+      g.appendChild(path);
+      last = path.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
+        { duration: ms, delay: t, easing: "cubic-bezier(.3,.1,.6,1)", fill: "forwards" });
+      t += ms + LIFT_MS / hurry;
+    }
+    if (last) last.onfinish = () => g.remove(); else g.remove();
+  }
+  return Math.round(t);
 }
 
-function drawGlyph(root: SVGSVGElement, d: string, x: number, y: number, w: number, h: number, ink: string, delay: number) {
-  const ns = "http://www.w3.org/2000/svg";
-  const id = `clip${Math.random().toString(36).slice(2)}`;
-  const g = document.createElementNS(ns, "g");
-  g.innerHTML = `
-    <clipPath id="${id}"><rect x="${x}" y="${y}" width="0" height="${h}"/></clipPath>
-    <path d="${d}" fill="${ink}" clip-path="url(#${id})"/>
-    <path d="${d}" fill="none" stroke="${ink}" stroke-width="0.9" stroke-linejoin="round" pathLength="1"
-          stroke-dasharray="1" stroke-dashoffset="1"/>`;
-  root.appendChild(g);
-  const [rect, , trace] = [g.querySelector("rect")!, 0, g.querySelectorAll("path")[1]];
-  const opts = { duration: STROKE_MS, delay, easing: "ease-out", fill: "forwards" as const };
-  rect.animate([{ width: "0" }, { width: `${w}px` }], opts);
-  trace.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], opts).onfinish = () => g.remove();
+let cachedMetrics: { fs: number; asc: number; desc: number } | null = null;
+/** hhea ascender/descender of Monaspace Radon, in em (from the TTF). */
+function fontMetrics(fs: number) {
+  if (!cachedMetrics || cachedMetrics.fs !== fs) cachedMetrics = { fs, asc: 0.7825 * fs, desc: -0.2175 * fs };
+  return cachedMetrics;
 }
