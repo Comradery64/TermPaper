@@ -13,15 +13,17 @@ const USE_WEBGL = false;
 
 // font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; ?font=<key> overrides
 const FONTS = [
-  { key: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
-  { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
-  { key: "victor-cursive", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
-  { key: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
-  { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
+  { key: "radon", blocks: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
+  { key: "victor", blocks: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
+  { key: "victor-cursive", blocks: "victor", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
+  { key: "maple", blocks: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
+  { key: "maple-cursive", blocks: "maple", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
 ];
 const DEFAULT_SIZE = 15;
 const wanted = new URLSearchParams(location.search).get("font") ?? prefs.font;
 let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
+
+function fontStack() { return `"TermPaper Blocks ${font.blocks}", "${font.family}", monospace`; }
 
 /** xterm colors from the ink theme; ink is palette blue, graphite the default foreground. */
 function xtermTheme() {
@@ -45,7 +47,7 @@ function xtermTheme() {
 }
 
 const term = new Terminal({
-  fontFamily: `"${font.family}", monospace`,
+  fontFamily: fontStack(),
   fontSize: prefs.fontSize,
   lineHeight: 1.6,
   allowTransparency: true,
@@ -179,7 +181,7 @@ async function setFont(key: string) {
   font = FONTS.find((f) => f.key === key) ?? font;
   prefs.font = font.key; savePrefs();
   await Promise.all([document.fonts.load(`15px "${font.family}"`), loadPen(font.pen).catch((e) => console.warn("pen strokes", e))]);
-  term.options.fontFamily = `"${font.family}", monospace`;
+  term.options.fontFamily = fontStack();
   fit.fit(); applyRuling();
 }
 

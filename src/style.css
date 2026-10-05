@@ -28,6 +28,12 @@
 @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-Italic.woff2") format("woff2"); font-weight: 400; font-style: normal; }
 @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-BoldItalic.woff2") format("woff2"); font-weight: 700; font-style: normal; }
 
+/* block elements + light box drawing sized to fill the tall cell (tools/block_glyphs.py);
+   listed first in the terminal's font stack so they beat the text font's own glyphs */
+@font-face { font-family: "TermPaper Blocks radon"; src: url("/fonts/blocks-radon.ttf?v=2") format("truetype"); unicode-range: U+2500, U+2502, U+250C, U+2510, U+2514, U+2518, U+251C, U+2524, U+252C, U+2534, U+253C, U+256D-2570, U+2580-2590, U+2594-259F; }
+@font-face { font-family: "TermPaper Blocks victor"; src: url("/fonts/blocks-victor.ttf?v=2") format("truetype"); unicode-range: U+2500, U+2502, U+250C, U+2510, U+2514, U+2518, U+251C, U+2524, U+252C, U+2534, U+253C, U+256D-2570, U+2580-2590, U+2594-259F; }
+@font-face { font-family: "TermPaper Blocks maple"; src: url("/fonts/blocks-maple.ttf?v=2") format("truetype"); unicode-range: U+2500, U+2502, U+250C, U+2510, U+2514, U+2518, U+251C, U+2524, U+252C, U+2534, U+253C, U+256D-2570, U+2580-2590, U+2594-259F; }
+
 :root {
   --paper: #f4f4f4;
   --rule-color: #9fcbea;
@@ -109,6 +115,8 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
 /* no multiply blend here: it would erase the light rim of the deboss */
 #term { height: 100%; }
 .xterm .xterm-rows { opacity: 0.93; }  /* all text, shadows included */
+/* cell backgrounds fill the whole tall row, not just the glyph's em box */
+.xterm .xterm-rows span[class*="xterm-bg-"], .xterm .xterm-rows span[style*="background"] { display: inline-block; height: 100%; vertical-align: top; }
 /* deboss: glyphs pressed into the paper, lit from the top-left.
    Shadow falls on the upper-left wall of the groove; the lower-right rim catches light. */
 .xterm .xterm-rows span {
