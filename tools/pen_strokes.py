@@ -105,6 +105,36 @@ def simplify(pts, tol=1.2):
         return simplify(pts[:i+1], tol)[:-1] + simplify(pts[i:], tol)
     return [pts[0], pts[-1]]
 
+def merge_lines(glyph, tol=0.05, max_deg=25):
+    """Join stroke pieces that continue each other in a straight line (skeleton junctions cut `#` into stubs)."""
+    def ang(s): return math.degrees(math.atan2(s[-1][1] - s[0][1], s[-1][0] - s[0][0]))
+    glyph = [list(s) for s in glyph]
+    merged = True
+    while merged:
+        merged = False
+        for i in range(len(glyph)):
+            for j in range(len(glyph)):
+                if i == j: continue
+                a, b = glyph[i], glyph[j]
+                for b2 in (b, b[::-1]):
+                    d = abs((ang(a) - ang(b2) + 180) % 360 - 180)
+                    if math.dist(a[-1], b2[0]) < tol and d < max_deg:
+                        glyph[i] = a + b2[1:]; del glyph[j]; merged = True; break
+                if merged: break
+            if merged: break
+    return glyph
+
+def is_vertical(s): return abs(s[-1][1] - s[0][1]) > abs(s[-1][0] - s[0][0])
+
+def verticals_then_horizontals(glyph):
+    """Verticals left to right, then horizontals top to bottom; every line drawn top-down / left-to-right."""
+    v = sorted((p if p[0][1] < p[-1][1] else p[::-1] for p in glyph if is_vertical(p)), key=lambda s: s[0][0])
+    h = sorted((p if p[0][0] < p[-1][0] else p[::-1] for p in glyph if not is_vertical(p)), key=lambda s: s[0][1])
+    return v + h
+
+# hand-chosen stroke order for glyphs the generic heuristic gets wrong
+ORDER = {"#": lambda g: verticals_then_horizontals(merge_lines(g))}
+
 out, widths = {}, []
 for code in range(0x21, 0x7f):
     ch = chr(code)
@@ -119,7 +149,7 @@ for code in range(0x21, 0x7f):
     for s in strokes:
         pts = simplify([(int(r), int(c)) for r, c in s])
         glyph.append([[round((c - PAD) / S, 4), round((r - PAD - S) / S, 4)] for r, c in pts])  # em units, y down from baseline
-    out[ch] = glyph
+    out[ch] = ORDER[ch](glyph) if ch in ORDER else glyph
 
 tt = TTFont(FONT); upm = tt["head"].unitsPerEm
 asc, desc = tt["hhea"].ascent / upm, tt["hhea"].descent / upm
