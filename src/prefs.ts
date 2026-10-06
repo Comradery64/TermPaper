@@ -35,9 +35,9 @@ export const PRESETS: Record<string, { label: string; colors: Colors }> = {
 export type LineNumbers = "rows" | "commands" | "off";
 export type PanelSide = "right" | "left" | "bottom";
 export const prefs = {
-  font: "radon",
-  fontSize: 15,
-  lineNumbers: "rows" as LineNumbers,
+  font: "victor",          // defaults are the owner's tuned setup
+  fontSize: 17,
+  lineNumbers: "off" as LineNumbers,
   hlOutput: true,
   hlInput: false,
   panelSide: "right" as PanelSide,

@@ -21,7 +21,7 @@ const FONTS = [
   { key: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
   { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
 ];
-const DEFAULT_SIZE = 15;
+const DEFAULT_SIZE = 17;
 const wanted = new URLSearchParams(location.search).get("font") ?? prefs.font;
 let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
 
