@@ -2,6 +2,8 @@
  * Settings card (Cmd/Ctrl+,). Edits `prefs` in place, saves, and tells main.ts what changed.
  */
 import { PRESETS, ROLES, prefs, savePrefs, type LineNumbers, type PanelSide } from "./prefs";
+import { pageTurn } from "./pageturn";
+import { overlayScrollbar } from "./scrollbar";
 
 export interface FontChoice { key: string; family: string; label: string }
 export type Changed = "font" | "fontSize" | "lineNumbers" | "highlight" | "colors";
@@ -10,9 +12,11 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
   if (document.getElementById("settings")) return;
   const back = document.createElement("div");
   back.id = "settings";
-  back.className = prefs.panelSide;
+  // right: the page turns over to show the card on its back; left/bottom: the card slides in
+  const turning = prefs.panelSide === "right";
+  back.className = turning ? "right turn" : prefs.panelSide;
   back.innerHTML = `
-    <div class="card" role="dialog" aria-label="Settings">
+    <div class="card" role="dialog" aria-label="Settings"><div class="scroll">
       <h2>Settings</h2>
       <h3>Font</h3>
       <div class="fonts"></div>
@@ -33,7 +37,7 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
       <div class="seg presets"></div>
       <div class="colors"></div>
       <p class="hint">Esc to close · colors apply to new text</p>
-    </div>`;
+    </div></div>`;
   const $ = <T extends Element>(q: string) => back.querySelector<T>(q)!;
   const changed = (what: Changed) => { savePrefs(); onChange(what); render(); };
 
@@ -53,7 +57,7 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
     b.onclick = () => { prefs.lineNumbers = b.dataset.v as LineNumbers; changed("lineNumbers"); };
   });
   back.querySelectorAll<HTMLButtonElement>(".side button").forEach((b) => {
-    b.onclick = () => { prefs.panelSide = b.dataset.v as PanelSide; back.className = prefs.panelSide; savePrefs(); render(); };
+    b.onclick = () => { prefs.panelSide = b.dataset.v as PanelSide; savePrefs(); render(); };   // applies next open
   });
   back.querySelectorAll<HTMLInputElement>(".check input").forEach((c) => {
     c.onchange = () => { (prefs as any)[c.dataset.k!] = c.checked; changed("highlight"); };
@@ -86,13 +90,24 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
     back.querySelectorAll<HTMLElement>(".fonts .sample").forEach((s) => (s.style.color = prefs.colors.ink));
   }
 
-  const close = () => { back.remove(); document.removeEventListener("keydown", onKey, true); onClose(); };
+  let closing = false;
+  const close = async () => {
+    if (closing) return;
+    closing = true;
+    document.removeEventListener("keydown", onKey, true);
+    if (turn) await turn.close();
+    back.remove(); onClose();
+  };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape" || ((e.metaKey || e.ctrlKey) && e.key === ",")) { e.preventDefault(); e.stopPropagation(); close(); }
   };
-  back.onclick = (e) => { if (e.target === back) close(); };
+  back.onclick = (e) => { if (!(e.target as Element).closest(".card")) close(); };
   document.addEventListener("keydown", onKey, true);
   document.body.appendChild(back);
+  const card = $<HTMLElement>(".card");
+  const turn = turning ? pageTurn(back, card) : null;
+  overlayScrollbar(card, () => card.querySelector<HTMLElement>(".scroll"), false);
   render();
+  turn?.open();
   back.querySelector<HTMLElement>(".fonts button.on")?.focus();
 }

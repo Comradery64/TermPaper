@@ -6,9 +6,10 @@
 const ZONE = 0.08;
 const LINGER_MS = 900;
 
-export function overlayScrollbar(host: HTMLElement) {
+export function overlayScrollbar(host: HTMLElement,
+  find = () => host.querySelector<HTMLElement>(".xterm-viewport"), edgeZone = true) {
   const thumb = document.createElement("div");
-  thumb.id = "scroll-thumb";
+  thumb.className = "scroll-thumb";
   host.appendChild(thumb);
   let viewport: HTMLElement | null = null;
   let near = false, dragging = false, hideTimer: number | undefined;
@@ -30,14 +31,14 @@ export function overlayScrollbar(host: HTMLElement) {
     return true;
   };
   const attach = () => {
-    const v = host.querySelector<HTMLElement>(".xterm-viewport");
+    const v = find();
     if (!v || v === viewport) return;
     viewport = v;
     v.addEventListener("scroll", () => { if (place()) show(); }, { passive: true });
     new ResizeObserver(place).observe(v);
   };
 
-  document.addEventListener("mousemove", (e) => {
+  if (edgeZone) document.addEventListener("mousemove", (e) => {
     attach();
     const r = host.getBoundingClientRect();
     const was = near;
@@ -45,7 +46,7 @@ export function overlayScrollbar(host: HTMLElement) {
     if (near && place()) show();
     else if (was && !near) show();   // start the fade
   });
-  document.addEventListener("mouseleave", () => { near = false; show(); });
+  if (edgeZone) document.addEventListener("mouseleave", () => { near = false; show(); });
 
   thumb.addEventListener("pointerdown", (e) => {
     if (!viewport) return;

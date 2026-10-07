@@ -153,6 +153,8 @@ function demoMode() {
   const prompt = () => enqueue(inkify("\x1b]133;A\x07demo ~ % \x1b]133;B\x07"));
   prompt();
   (window as any).__tp = { term, enqueue, inkify, setFont, state: () => ({ typing, ready, pending }) };
+  // debug: ?settings=open opens the panel on load (headless screenshots of the page turn)
+  if (new URLSearchParams(location.search).get("settings") === "open") openSettings(FONTS, settingsChanged, () => term.focus());
   term.onData((s) => {
     if (s === "\r") { enqueue(inkify("\x1b]133;C\x07\r\n(demo: no shell)\r\n")); prompt(); }
     else if (s === "\x7f") enqueue("\b \b");

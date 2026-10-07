@@ -136,14 +136,14 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
 .xterm .xterm-viewport { scrollbar-width: none; }
 .xterm .xterm-viewport::-webkit-scrollbar { width: 0; height: 0; }
 #term { position: relative; }
-#scroll-thumb {
+.scroll-thumb {
   position: absolute; top: 0; right: 3px; z-index: 4;
   width: 7px; border-radius: 4px;
   background: rgba(28, 42, 96, 0.28);
   opacity: 0; transition: opacity 0.35s ease, width 0.15s ease, background-color 0.15s ease;
 }
-#scroll-thumb.on { opacity: 1; transition-duration: 0.12s, 0.15s, 0.15s; }
-#scroll-thumb:hover, #scroll-thumb:active { width: 9px; background: rgba(28, 42, 96, 0.45); }
+.scroll-thumb.on { opacity: 1; transition-duration: 0.12s, 0.15s, 0.15s; }
+.scroll-thumb:hover, .scroll-thumb:active { width: 9px; background: rgba(28, 42, 96, 0.45); }
 
 /* pen-stroke overlay for typed characters */
 #pen { position: absolute; inset: 0; pointer-events: none; opacity: 0.93; z-index: 3; }
@@ -169,8 +169,7 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
 #settings .card {
   position: absolute; top: 0; bottom: 0; right: 0;
   width: min(560px, 86vw);
-  overflow-y: auto; box-sizing: border-box;
-  padding: 28px 28px 16px;
+  display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;
   background: #fbfaf6;
   color: rgba(36, 38, 46, 0.94);
   box-shadow: -1px 0 2px rgba(0,0,0,0.12), -8px 0 28px rgba(0,0,0,0.16);
@@ -183,6 +182,38 @@ html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
 #settings.bottom .card { top: auto; left: 0; width: auto; max-height: 62vh; --from: translateY(100%);
   box-shadow: 0 -1px 2px rgba(0,0,0,0.12), 0 -8px 28px rgba(0,0,0,0.16); }
 @keyframes settings-slide { from { transform: var(--from); } }
+/* the card scrolls inside; the native bar is off, scrollbar.ts shows a thin thumb only while scrolling */
+#settings .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 28px 16px; scrollbar-width: none; }
+#settings .scroll::-webkit-scrollbar { width: 0; height: 0; }
+
+/* page turn (panel side "right"): pageturn.ts positions everything; no slide, no dim */
+#settings.turn { background: none; animation: none; }
+#settings.turn .card {
+  right: auto; bottom: auto; animation: none; transform-origin: 0 0;
+  box-shadow: none;
+  /* the back of the same sheet: paper, fibers, faint ruling */
+  background:
+    linear-gradient(to left, rgba(40, 40, 50, 0.06), transparent 18%),
+    url("/paper.png?v=3") 0 0 / 512px 512px,
+    #f6f5f1;
+  background-blend-mode: normal, multiply, normal;
+}
+#settings .turn-flap { position: absolute; inset: 0; pointer-events: none; filter: drop-shadow(-6px 4px 10px rgba(30, 30, 40, 0.28)); }
+#settings .turn-flap .card { pointer-events: auto; }
+/* the next page, uncovered as the page lifts */
+#settings .turn-under {
+  position: absolute; inset: 0; overflow: hidden;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--rule) - 1px),
+      var(--rule-color) calc(var(--rule) - 1px), var(--rule-color) var(--rule)) 0 var(--rule-offset) / 100% var(--rule),
+    url("/paper.png?v=3") 0 0 / 512px 512px, var(--paper);
+  background-blend-mode: normal, multiply, normal;
+}
+#settings .turn-shade {
+  position: absolute; width: 400vmax; height: 90px;
+  transform-origin: 0 0;
+  background: linear-gradient(to bottom, rgba(30, 30, 40, 0.20), transparent);
+}
 @keyframes settings-fade { from { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { #settings, #settings .card { animation: none; } }
 #settings h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
