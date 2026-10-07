@@ -16,8 +16,8 @@ const USE_WEBGL = false;
 // font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; ?font=<key> overrides
 const FONTS = [
   { key: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
-  { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
   { key: "victor-cursive", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
+  { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
   { key: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
   { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
 ];

@@ -1,4 +1,11 @@
-/** User preferences: one JSON blob in localStorage. Ink themes are presets the user can edit per color. */
+/**
+ * User preferences: one JSON blob, saved to a file in the app's config dir
+ * (~/Library/Application Support/<identifier>/prefs.json) so they survive restarts,
+ * dev-server port changes and dev/release switches. localStorage is tied to the page's
+ * origin, so it is only a fallback (plain-browser demo). Ink themes are presets the
+ * user can edit per color.
+ */
+import { invoke } from "@tauri-apps/api/core";
 
 export const ROLES = [
   ["ink", "Typed text"], ["graphite", "System text"], ["lineNumber", "Line numbers"],
@@ -35,7 +42,7 @@ export const PRESETS: Record<string, { label: string; colors: Colors }> = {
 export type LineNumbers = "rows" | "commands" | "off";
 export type PanelSide = "right" | "left" | "bottom";
 export const prefs = {
-  font: "victor",          // defaults are the owner's tuned setup
+  font: "radon",           // defaults are the owner's tuned setup
   fontSize: 17,
   lineNumbers: "off" as LineNumbers,
   hlOutput: true,
@@ -46,7 +53,8 @@ export const prefs = {
 };
 
 try {
-  Object.assign(prefs, JSON.parse(localStorage.getItem("prefs") ?? "{}"));
+  const saved = await invoke<string | null>("load_prefs").catch(() => null) ?? localStorage.getItem("prefs");
+  Object.assign(prefs, JSON.parse(saved ?? "{}"));
   // keys from before the prefs blob
   prefs.font = localStorage.getItem("font") ?? prefs.font;
   prefs.fontSize = Number(localStorage.getItem("fontSize")) || prefs.fontSize;
@@ -54,7 +62,11 @@ try {
   prefs.colors = { ...PRESETS.fountain.colors, ...prefs.colors };   // roles added later get defaults
 } catch (e) { console.warn("prefs", e); }
 
-export function savePrefs() { localStorage.setItem("prefs", JSON.stringify(prefs)); }
+export function savePrefs() {
+  const json = JSON.stringify(prefs);
+  localStorage.setItem("prefs", json);
+  invoke("save_prefs", { json }).catch(() => { /* plain browser: localStorage only */ });
+}
 
 export function rgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
