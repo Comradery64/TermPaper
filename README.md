@@ -11,12 +11,12 @@ Built on [xterm.js](https://xtermjs.org) + [Tauri v2](https://tauri.app) + [port
 ```sh
 pnpm install
 pnpm tauri dev          # app with a real shell
-pnpm dev                # browser-only demo mode at http://localhost:1420 (fake prompt, local echo)
+pnpm dev                # browser-only demo mode at http://localhost:1430 (fake prompt, local echo)
 ```
 
 Requires Rust stable, Node 22, pnpm. macOS is the tested platform; Linux/Windows build but are unverified.
 
-Debug: `http://localhost:1420/?pen=slow` plays the handwriting at 1/20 speed.
+Debug: `http://localhost:1430/?pen=slow` plays the handwriting at 1/20 speed.
 
 ## Keys
 
