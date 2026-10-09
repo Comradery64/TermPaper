@@ -1,0 +1,11 @@
+# TermPaper look for Ghostty. Copy the themes/ folder to ~/.config/ghostty/themes/
+# and paste these lines into ~/.config/ghostty/config.
+theme = TermPaper Fountain Pen
+font-family = Monaspace Radon
+font-size = 17
+adjust-cell-height = 60%
+cursor-style = underline
+cursor-style-blink = true
+window-padding-x = 24
+window-padding-y = 24
+window-theme = light

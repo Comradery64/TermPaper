@@ -1,0 +1,23 @@
+# TermPaper · Fountain Pen — ink on paper (Reishi.dev)
+background = #f4f4f4
+foreground = #24262e
+cursor-color = #0e1e80
+cursor-text = #f4f4f4
+selection-background = #c8e2f5
+selection-foreground = #24262e
+palette = 0=#24262e
+palette = 1=#b3261e
+palette = 2=#2e7d32
+palette = 3=#8a6d00
+palette = 4=#0e1e80
+palette = 5=#7b3f8c
+palette = 6=#0e6e7c
+palette = 7=#6b6f7b
+palette = 8=#5a5e6a
+palette = 9=#c62828
+palette = 10=#1b7f3b
+palette = 11=#946f00
+palette = 12=#0e1e80
+palette = 13=#8e3f9e
+palette = 14=#0f7f90
+palette = 15=#3a3d47
