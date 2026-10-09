@@ -6,6 +6,8 @@ adjust-cell-height = 60%
 cursor-style = underline
 cursor-style-blink = true
 window-theme = light
+# no title bar, like TermPaper
+macos-titlebar-style = hidden
 # left padding leaves room for the binder holes and margin line
 window-padding-x = 84,24
 window-padding-y = 24
