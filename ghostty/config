@@ -6,8 +6,11 @@ adjust-cell-height = 60%
 cursor-style = underline
 cursor-style-blink = true
 window-theme = light
-# tabs sit in the title bar, which takes the paper color; traffic lights stay
-macos-titlebar-style = tabs
+# blank paper-colored strip with just the traffic lights (Ghostty can't draw the paper
+# texture under it); extra tabs get the native tab bar
+macos-titlebar-style = transparent
+macos-titlebar-proxy-icon = hidden
+title = " "
 # left padding leaves room for the binder holes and margin line
 window-padding-x = 84,24
 window-padding-y = 24
