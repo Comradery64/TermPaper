@@ -1,11 +1,16 @@
-# TermPaper look for Ghostty. Copy the themes/ folder to ~/.config/ghostty/themes/
-# and paste these lines into ~/.config/ghostty/config.
+# TermPaper look for Ghostty (Reishi.dev). Install: see README.md in this folder.
 theme = TermPaper Fountain Pen
 font-family = Monaspace Radon
 font-size = 17
 adjust-cell-height = 60%
 cursor-style = underline
 cursor-style-blink = true
-window-padding-x = 24
-window-padding-y = 24
 window-theme = light
+# left padding leaves room for the binder holes and margin line
+window-padding-x = 84,24
+window-padding-y = 24
+# paper, rules, margin, holes, pressed-in ink
+background-image = termpaper/paper.png
+background-image-repeat = true
+background-image-fit = none
+custom-shader = termpaper/paper.glsl
