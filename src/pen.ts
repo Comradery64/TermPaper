@@ -144,6 +144,25 @@ function strokePath(root: SVGGElement, d: string, ink: string, width: number, ms
     { duration: ms, delay, easing: "cubic-bezier(.3,.1,.6,1)", fill: "forwards" });
 }
 
+/** The text's real step per column. WebKit lays out a row a hair narrower than xterm's fractional cell
+ *  width, so col × cell.width drifts right (~1.5px by column 100). Measured once per cell width. */
+let adv = { cell: 0, px: 0 };
+function advance(term: Terminal, cell: number): number {
+  if (adv.cell === cell) return adv.px;
+  const rows = term.element?.querySelector<HTMLElement>(".xterm-rows");
+  if (!rows) return cell;
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+  const span = document.createElement("span");
+  span.textContent = "m".repeat(200);
+  probe.appendChild(span);
+  rows.appendChild(probe);
+  const w = span.getBoundingClientRect().width / 200;
+  probe.remove();
+  adv = { cell, px: w > 0 ? w : cell };
+  return adv.px;
+}
+
 /** Write `text` (1–4 printable ASCII chars) by hand at the cursor. Returns the hold in ms. */
 export function penWrite(term: Terminal, text: string, ink: string, backlog = 0, cursive = false): number {
   if (!data) return 0;
@@ -167,7 +186,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     const strokes = data.glyphs[ch];
     if (!strokes) { endWord(); continue; }
     const col = buf.cursorX + i;
-    const x0 = col * dims.width;
+    const x0 = col * advance(term, dims.width);
     const toPx = (st: [number, number][]) => st.map(([x, y]) => [x0 + x * fs, baseline + y * fs]);
     const joins = cursive && JOINS.test(ch);
     const intoCapital = /[A-Z]/.test(ch);   // a capital starts with its own entry stroke
