@@ -14,7 +14,7 @@ struct Pty {
 struct PtyState(Mutex<Option<Pty>>);
 
 #[tauri::command]
-fn spawn(state: State<PtyState>, cols: u16, rows: u16, on_data: Channel<Vec<u8>>) -> Result<(), String> {
+fn spawn(app: tauri::AppHandle, state: State<PtyState>, cols: u16, rows: u16, on_data: Channel<Vec<u8>>) -> Result<(), String> {
     let pair = native_pty_system()
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| e.to_string())?;
@@ -26,7 +26,7 @@ fn spawn(state: State<PtyState>, cols: u16, rows: u16, on_data: Channel<Vec<u8>>
     cmd.env("TERM", "xterm-256color");
     cmd.env("TERM_PROGRAM", "TermPaper");
     if shell.ends_with("zsh") {
-        if let Ok(dir) = install_zsh_integration() {
+        if let Ok(dir) = install_zsh_integration(&app) {
             if let Some(user) = std::env::var_os("ZDOTDIR") {
                 cmd.env("TERMPAPER_USER_ZDOTDIR", user);
             }
@@ -76,10 +76,16 @@ fn resize(state: State<PtyState>, cols: u16, rows: u16) -> Result<(), String> {
     Ok(())
 }
 
-/// Write the bundled zsh shim to a per-user dir and return it for ZDOTDIR.
-fn install_zsh_integration() -> std::io::Result<std::path::PathBuf> {
-    let dir = std::env::temp_dir().join("termpaper-zsh");
+/// Write the bundled zsh shim to the app's own data dir (private to the user, unlike a
+/// temp dir another account could pre-create) and return it for ZDOTDIR.
+fn install_zsh_integration(app: &tauri::AppHandle) -> std::io::Result<std::path::PathBuf> {
+    let dir = app.path().app_data_dir().map_err(std::io::Error::other)?.join("zsh");
     std::fs::create_dir_all(&dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    }
     std::fs::write(dir.join(".zshenv"), include_str!("../shell/zsh/.zshenv"))?;
     std::fs::write(dir.join(".zshrc"), include_str!("../shell/zsh/.zshrc"))?;
     Ok(dir)
