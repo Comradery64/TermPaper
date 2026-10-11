@@ -230,6 +230,132 @@ def glyph_strokes(ch, start=None):
     return [[[round((c - PAD) / S, 4), round((r - PAD - S) / S, 4)] for r, c in simplify([(int(r), int(c)) for r, c in st])]
             for st in strokes]
 
+
+# --- letters written by hand ---------------------------------------------------------------
+# How a person writes each letter: strokes as waypoint lists, in the glyph's own bounding box
+# (x 0..1 left→right, y 0..1 top→bottom). Between waypoints the pen follows the letter's
+# skeleton by the shortest route, so it retraces where a hand does (down an m's stem and back
+# up into the arch) and one waypoint list is one pen-down stroke. Whatever the waypoints don't
+# cover (serifs, a zero's slash) is still written, after the described strokes.
+HAND = {
+    # lowercase: one continuous stroke wherever a hand keeps the pen down; dots/crosses last
+    "a": [[(.9, .12), (.5, 0), (.05, .45), (.35, 1), (.8, .7), (.92, .05), (.92, .8), (1, 1)]],
+    "b": [[(.2, 0), (.05, 1), (.08, .6), (.5, .38), (.95, .65), (.6, 1), (.08, .92)]],
+    "c": [[(.95, .15), (.5, 0), (.05, .5), (.45, 1), (.95, .85)]],
+    "d": [[(.75, .38), (.3, .4), (.02, .75), (.35, 1), (.8, .8), (1, 0), (.9, .9), (1, 1)]],
+    "e": [[(.05, .55), (.9, .45), (.6, 0), (.1, .4), (.2, .9), (.6, 1), (.95, .85)]],
+    "f": [[(.95, .06), (.6, 0), (.4, .3), (.25, 1)], [(0, .38), (.95, .38)]],
+    "g": [[(.85, .12), (.45, 0), (.05, .3), (.4, .6), (.85, .35), (.92, .05), (.85, .8), (.4, 1), (.05, .85)]],
+    "h": [[(.15, 0), (0, 1), (.08, .55), (.6, .38), (.88, .55), (.82, 1), (1, 1)]],
+    "i": [[(.45, .35), (.3, .95), (.95, 1)], [(.5, 0), (.52, .06)]],
+    "j": [[(.62, .35), (.5, .95), (.1, .92)], [(.65, 0), (.67, .06)]],
+    "k": [[(.15, 0), (0, 1), (.05, .7), (.75, .38), (.35, .62), (.95, 1)]],
+    "l": [[(.5, 0), (.25, .95), (.95, 1)]],
+    "m": [[(.08, .02), (0, 1), (.06, .25), (.3, 0), (.5, .3), (.47, 1), (.5, .3), (.75, 0), (.95, .3), (.92, 1)]],
+    "n": [[(.08, .02), (0, 1), (.06, .25), (.5, 0), (.9, .3), (.85, 1), (1, 1)]],
+    "o": [[(.6, 0), (.1, .3), (.3, 1), (.9, .6), (.6, 0)]],
+    "p": [[(.12, 0), (0, 1), (.1, .05), (.6, 0), (.95, .3), (.6, .6), (.1, .5)]],
+    "q": [[(.85, .1), (.45, 0), (.05, .3), (.4, .6), (.85, .4), (.92, .05), (.85, 1)]],
+    "r": [[(.08, .02), (0, 1), (.06, .3), (.6, 0), (1, .1)]],
+    "s": [[(.9, .1), (.5, 0), (.1, .25), (.5, .5), (.9, .75), (.5, 1), (.05, .9)]],
+    "t": [[(.4, 0), (.3, .95), (.9, 1)], [(0, .32), (.92, .32)]],
+    "u": [[(.05, .05), (.1, .8), (.4, 1), (.85, .7), (.95, 0), (.9, .9), (1, 1)]],
+    "v": [[(0, 0), (.5, 1), (1, 0)]],
+    "w": [[(0, 0), (.25, 1), (.5, .3), (.75, 1), (1, 0)]],
+    "x": [[(0, 0), (1, 1)], [(1, 0), (0, 1)]],
+    "y": [[(.05, .02), (.15, .4), (.5, .5), (.95, .02), (.85, .7), (.4, 1), (0, .9)]],
+    "z": [[(0, 0), (1, 0), (0, 1), (1, 1)]],
+    # capitals: strokes in the order taught, each pen-down as long as a hand keeps it
+    "A": [[(0, 1), (.5, 0), (1, 1)], [(.2, .66), (.8, .66)]],
+    "B": [[(.05, 0), (.05, 1)], [(.05, 0), (.8, .1), (.7, .48), (.05, .5), (.85, .62), (.75, 1), (.05, 1)]],
+    "C": [[(.95, .15), (.5, 0), (.05, .5), (.5, 1), (.95, .85)]],
+    "D": [[(.05, 0), (.05, 1)], [(.05, 0), (.7, .05), (.95, .5), (.7, .95), (.05, 1)]],
+    "E": [[(1, 0), (.05, 0), (.05, 1), (1, 1)], [(.05, .5), (.8, .5)]],
+    "F": [[(1, 0), (.05, 0), (.05, 1)], [(.05, .5), (.8, .5)]],
+    "G": [[(.95, .15), (.5, 0), (.05, .5), (.5, 1), (.95, .85), (.95, .55), (.55, .55)]],
+    "H": [[(.05, 0), (.05, 1)], [(.95, 0), (.95, 1)], [(.05, .5), (.95, .5)]],
+    "I": [[(.5, 0), (.5, 1)], [(0, 0), (1, 0)], [(0, 1), (1, 1)]],
+    "J": [[(.9, 0), (.85, .8), (.5, 1), (.05, .8)]],
+    "K": [[(.05, 0), (.05, 1)], [(.95, 0), (.1, .55), (.95, 1)]],
+    "L": [[(.05, 0), (.05, 1), (.95, 1)]],
+    "M": [[(0, 1), (.05, 0), (.5, .6), (.95, 0), (1, 1)]],
+    "N": [[(.05, 1), (.05, 0), (.95, 1), (.95, 0)]],
+    "O": [[(.5, 0), (.05, .5), (.5, 1), (.95, .5), (.5, 0)]],
+    "P": [[(.05, 1), (.05, 0), (.75, .05), (.95, .3), (.7, .55), (.05, .55)]],
+    "Q": [[(.5, 0), (.05, .42), (.45, .82), (.95, .42), (.5, 0)], [(.6, .8), (1, 1)]],   # the tail can hang below the bowl
+    "R": [[(.05, 1), (.05, 0), (.8, .08), (.75, .5), (.1, .55), (.5, .55), (.95, 1)]],
+    "S": [[(.9, .1), (.5, 0), (.1, .25), (.5, .5), (.9, .75), (.5, 1), (.05, .9)]],
+    "T": [[(0, 0), (1, 0)], [(.5, 0), (.5, 1)]],
+    "U": [[(.05, 0), (.1, .8), (.5, 1), (.9, .8), (.95, 0)]],
+    "V": [[(0, 0), (.5, 1), (1, 0)]],
+    "W": [[(0, 0), (.25, 1), (.5, .4), (.75, 1), (1, 0)]],
+    "X": [[(0, 0), (1, 1)], [(1, 0), (0, 1)]],
+    "Y": [[(0, 0), (.5, .5), (1, 0)], [(.5, .5), (.5, 1)]],
+    "Z": [[(0, 0), (1, 0), (0, 1), (1, 1)]],
+    # digits
+    "0": [[(.5, 0), (.05, .5), (.5, 1), (.95, .5), (.5, 0)]],
+    "1": [[(.3, .15), (.6, 0), (.6, 1)], [(.2, 1), (.95, 1)]],
+    "2": [[(.05, .2), (.5, 0), (.95, .25), (.05, 1), (1, 1)]],
+    "3": [[(.05, .1), (.5, 0), (.9, .22), (.45, .48), (.95, .72), (.5, 1), (.05, .88)]],
+    "4": [[(.7, 1), (.7, 0), (0, .7), (1, .7)]],
+    "5": [[(.9, 0), (.15, 0), (.1, .45), (.6, .4), (.95, .7), (.5, 1), (.05, .88)]],
+    "6": [[(.85, .05), (.4, .1), (.05, .6), (.4, 1), (.9, .7), (.5, .4), (.08, .6)]],
+    "7": [[(0, 0), (1, 0), (.35, 1)]],
+    "8": [[(.5, .45), (.1, .25), (.5, 0), (.9, .25), (.5, .5), (.05, .75), (.5, 1), (.95, .75), (.5, .5)]],
+    "9": [[(.9, .35), (.5, .6), (.05, .3), (.5, 0), (.95, .3), (.6, 1)]],
+}
+# a cursive l with a loop (ℓ): up the front of the loop, over the top, down the back, then the tail;
+# a looped k: down the stem, back up, round the loop, then the leg
+HAND_LOOPED = {"l": [[(.3, .72), (.9, .22), (.6, 0), (.22, .3), (.3, .72), (.2, .95), (.95, 1)]],
+               "k": [[(.15, 0), (0, 1), (.05, .62), (.45, .35), (.85, .45), (.35, .62), (.95, 1)]]}
+MARK_COUNT = {"i": 1, "j": 1, "t": 1, "f": 1}   # trailing strokes that are dots/crosses, not body
+
+def hand_strokes(ch):
+    """Strokes for `ch` following HAND's waypoints along the skeleton; em units, y down from the baseline."""
+    import heapq
+    sk = skeletonize(raster(ch))
+    px = {tuple(p) for p in np.argwhere(sk)}
+    rs = [r for r, _ in px]; cs = [c for _, c in px]
+    r0, r1, c0, c1 = min(rs), max(rs), min(cs), max(cs)
+    arr = np.array(sorted(px))
+    snap = lambda x, y: tuple(arr[np.argmin((arr[:, 0] - (r0 + y * (r1 - r0))) ** 2 + (arr[:, 1] - (c0 + x * (c1 - c0))) ** 2)])
+    def route(a, b):   # shortest skeleton path a → b (8-connected, diagonal √2); None if apart
+        dist, prev, q = {a: 0.0}, {}, [(0.0, a)]
+        while q:
+            d, u = heapq.heappop(q)
+            if u == b: break
+            if d > dist[u]: continue
+            for v in neighbors(sk, u):
+                nd = d + (1.4142 if v[0] != u[0] and v[1] != u[1] else 1.0)
+                if nd < dist.get(v, 1e18): dist[v], prev[v] = nd, u; heapq.heappush(q, (nd, v))
+        if b not in dist: return None
+        path = [b]
+        while path[-1] != a: path.append(prev[path[-1]])
+        return path[::-1]
+    holes = ndimage.label(~raster(ch))[1] - 1   # enclosed counters: a looped letterform
+    paths = []
+    for spec in (HAND_LOOPED[ch] if ch in HAND_LOOPED and holes else HAND[ch]):
+        pts = [snap(x, y) for x, y in spec]
+        cur = [pts[0]]
+        for a, b in zip(pts, pts[1:]):
+            r = route(a, b)
+            if r is None: paths.append(cur); cur = [b]   # parts not connected: the pen lifts
+            else: cur += r[1:]
+        paths.append(cur)
+    # anything the waypoints left out is written afterwards, so no part of the glyph goes missing
+    covered = set()
+    for path in paths:
+        for r, c in path:
+            for dr in range(-4, 5):
+                for dc in range(-4, 5): covered.add((r + dr, c + dc))
+    left = [sg for sg in segments(sk) if sum(p in covered for p in sg) < 0.5 * len(sg)]
+    extra = [st for st in chain(left) if len(st) > 6]
+    marks = MARK_COUNT.get(ch, 0)
+    body, tail = paths[:len(paths) - marks] if marks else paths, paths[len(paths) - marks:] if marks else []
+    em = lambda st: [[round((c - PAD) / S, 4), round((r - PAD - S) / S, 4)] for r, c in simplify([(int(r), int(c)) for r, c in st])]
+    return [em(st) for st in body + extra + tail if len(st) > 1], len(body) + len(extra)
+
+hand_body = {}
 out, widths = {}, []
 for code in range(0x21, 0x7f):
     ch = chr(code)
@@ -238,6 +364,9 @@ for code in range(0x21, 0x7f):
     sk = skeletonize(mask)
     dist = ndimage.distance_transform_edt(mask)
     widths.append(float(np.median(dist[sk]) * 2))
+    if ch in HAND:
+        out[ch], hand_body[ch] = hand_strokes(ch)
+        continue
     glyph = glyph_strokes(ch, START.get(ch))
     out[ch] = ORDER[ch](glyph) if ch in ORDER else glyph
 
@@ -261,7 +390,6 @@ EXIT = {   # where the pen leaves
     "g": (.2, "desc"), "j": (.2, "desc"), "y": (.2, "desc"), "q": (1, "desc"), "f": (.5, "base"),
     "s": (.85, "base"), "p": (.6, "base"),
 }
-MARKS = {"i": "dot", "j": "dot", "t": "cross", "f": "cross"}
 
 def hint_point(glyph, hint):
     xs = [x for st in glyph for x, _ in st]
@@ -269,15 +397,6 @@ def hint_point(glyph, hint):
     hx, lv = hint
     y = LEVEL[lv] if isinstance(lv, str) else LEVEL["mid"] * lv   # a number: that fraction of the midline height
     return (x0 + hx * (x1 - x0), y)
-
-def split_marks(ch, glyph):
-    if ch not in MARKS or len(glyph) < 2: return glyph, []
-    L = lambda st: sum(math.dist(st[i], st[i + 1]) for i in range(len(st) - 1))
-    if MARKS[ch] == "dot": k = min(range(len(glyph)), key=lambda i: L(glyph[i]))
-    else: k = max(range(len(glyph)), key=lambda i: abs(glyph[i][-1][0] - glyph[i][0][0]) - abs(glyph[i][-1][1] - glyph[i][0][1]))
-    mark = glyph[k]
-    if MARKS[ch] == "cross": mark = mark if mark[0][0] <= mark[-1][0] else mark[::-1]   # crosses go left to right
-    return [st for i, st in enumerate(glyph) if i != k], [mark]
 
 def nearest_on(glyph, q):
     """Closest point to q on any stroke (projected onto segments): (stroke index, segment index, point)."""
@@ -292,27 +411,12 @@ def nearest_on(glyph, q):
             if d < best[0]: best = (d, i, k, p)
     return best[1:]
 
-def hand_order(ch, glyph):
-    """Body strokes reordered so the pen starts exactly at the entry; returns (strokes, body count, entry, exit)."""
-    body, marks = split_marks(ch, glyph)
-    i, k, p = nearest_on(body, hint_point(body, ENTRY[ch]))
-    p = [round(p[0], 4), round(p[1], 4)]
-    st = body[i]
-    if math.dist(p, st[0]) < 0.02: first = [st]
-    elif math.dist(p, st[-1]) < 0.02: first = [st[::-1]]
-    else:   # entry inside a stroke: start there, run to one end, then come back for the other part
-        a, b = [p] + st[k + 1:], [p] + st[k::-1]
-        first = [a, b] if len(a) >= len(b) else [b, a]
-    rest = [s2 for j, s2 in enumerate(body) if j != i]
-    order = first + rest
-    _, _, x = nearest_on(order, hint_point(body, EXIT.get(ch, (1, "base"))))
-    return order + marks, len(order), p, [round(x[0], 4), round(x[1], 4)]
-
-body_count, join_at = {}, {}
+body_count, join_at = dict(hand_body), {}
 for ch in ENTRY:
     if ch in out and out[ch]:
-        out[ch], body_count[ch], ein, eout = hand_order(ch, out[ch])
-        join_at[ch] = [ein, eout]
+        body = out[ch][:body_count.get(ch, len(out[ch]))]
+        snap_to = lambda hint: [round(v, 4) for v in nearest_on(body, hint_point(body, hint))[2]]
+        join_at[ch] = [snap_to(ENTRY[ch]), snap_to(EXIT.get(ch, (1, "base")))]
 
 tt = TTFont(FONT); upm = tt["head"].unitsPerEm
 asc, desc = tt["hhea"].ascent / upm, tt["hhea"].descent / upm
@@ -325,8 +429,8 @@ for ch in "aeBk%":
     print(ch, "strokes:", len(out[ch]), [len(s) for s in out[ch]])
 
 # debug sheet: lowercase in writing order; green = where the pen comes in, red = where it leaves
-sample = "abcdefghijklmnopqrstuvwxyz"
-sheet = Image.new("RGB", (13 * 110, 2 * 200), "white")
+sample = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+sheet = Image.new("RGB", (13 * 110, 5 * 200), "white")
 dr = ImageDraw.Draw(sheet)
 cols = ["#1c2a60", "#b3261e", "#2e7d32", "#8a6d00", "#7b3f8c", "#0e6e7c", "#555"]
 for i, ch in enumerate(sample):
@@ -338,8 +442,7 @@ for i, ch in enumerate(sample):
         pts = [(ox + x * 110, oy + y * 110) for x, y in st]
         if len(pts) > 1: dr.line(pts, fill=cols[j % len(cols)], width=3, joint="curve")
         dr.text((pts[0][0] + 4, pts[0][1] - 12), str(j + 1), fill=cols[j % len(cols)])
-    e0, e1 = join_at[ch]
-    for (x, y), c in (((e0), "#16a34a"), ((e1), "#dc2626")):
+    for (x, y), c in zip(join_at.get(ch, []), ("#16a34a", "#dc2626")):
         X, Y = ox + x * 110, oy + y * 110
         dr.ellipse([X - 6, Y - 6, X + 6, Y + 6], outline=c, width=3)
     dr.text((ox, oy + 45), ch, fill="#000")
