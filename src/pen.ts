@@ -18,22 +18,50 @@ const LIFT_MS = 18;         // pause when the pen lifts between strokes
 const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1;
 
 /**
- * Where a cursive join leaves a letter and where it enters the next, in em (y down from the
- * baseline): the exit is the rightmost point, the entry the leftmost, each preferring the
- * middle of the x-height band where hand-written joins run (not the top of an ascender).
+ * Cursive joining rules (school cursive: exit stroke of one letter → entry point of the next).
+ *  - Most letters leave from the baseline, at their right.
+ *  - b o v w end high: they leave from the midline, and the join dips to the baseline
+ *    before rising into the next letter ("tow-truck" letters).
+ *  - g j p q y leave from the tail of the descender and climb back through the baseline.
+ *  - Round letters (a c d g o q) are entered at the top of the bowl, on the midline;
+ *    the rest from the baseline at their left.
+ *  - The dot of i/j and the cross of t/f are not part of the joined stroke: they are drawn
+ *    after the letter's body and never used as a join point.
+ *  - No join into a capital, none between words, and digits don't join.
+ * Points are em, y down from the baseline; the midline is the font's x-height.
  */
-const anchorCache = new Map<string, { entry: [number, number]; exit: [number, number] }>();
-const JOIN_Y = -0.28, JOIN_PULL = 0.6;   // band centre (em) and how strongly height counts against x
+type P = [number, number];
+const HIGH_EXIT = "bovw", DESCENDS = "gjpqy", ROUND = "acdgoq";
+const JOIN_PULL = 1.2;   // how strongly distance from the target height counts against x
+const anchorCache = new Map<string, { entry: P; exit: P; body: P[][]; marks: P[][] }>();
+let xHeight = 0.5;
 function anchors(ch: string) {
   let a = anchorCache.get(ch);
   if (!a && data?.glyphs[ch]) {
-    const pts = data.glyphs[ch].flat();
-    const score = (p: [number, number], dir: number) => dir * p[0] - JOIN_PULL * Math.abs(p[1] - JOIN_Y);
-    const best = (dir: number) => pts.reduce((b, p) => (score(p, dir) > score(b, dir) ? p : b));
-    a = { exit: best(1), entry: best(-1) };
+    const [body, marks] = splitMarks(ch, data.glyphs[ch]);
+    const pts = body.flat();
+    const near = (y: number, dir: number) => (p: P) => dir * p[0] - JOIN_PULL * Math.abs(p[1] - y);
+    const best = (f: (p: P) => number) => pts.reduce((b, p) => (f(p) > f(b) ? p : b));
+    const exit = HIGH_EXIT.includes(ch) ? best(near(-xHeight, 1))
+      : DESCENDS.includes(ch) ? best((p) => p[1] + 0.3 * p[0])          // lowest, then rightmost: the tail
+      : best(near(0, 1));
+    const entry = ROUND.includes(ch) ? best(near(-xHeight, -1)) : best(near(0, -1));
+    a = { exit, entry, body, marks };
     anchorCache.set(ch, a);
   }
   return a;
+}
+/** Separate i/j dots and t/f crosses (written after the body) from the joined body strokes. */
+function splitMarks(ch: string, strokes: P[][]): [P[][], P[][]] {
+  if (strokes.length < 2) return [strokes, []];
+  const len = (s: P[]) => s.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - s[k - 1][0], p[1] - s[k - 1][1]) : 0), 0);
+  let mark = -1;
+  if ("ij".includes(ch)) mark = strokes.reduce((m, s, k) => (len(s) < len(strokes[m]) ? k : m), 0);   // the dot: shortest
+  else if ("tf".includes(ch)) {                                                                    // the cross: flattest
+    const flat = (s: P[]) => Math.abs(s[s.length - 1][0] - s[0][0]) - Math.abs(s[s.length - 1][1] - s[0][1]);
+    mark = strokes.reduce((m, s, k) => (flat(s) > flat(strokes[m]) ? k : m), 0);
+  }
+  return mark < 0 ? [strokes, []] : [strokes.filter((_, k) => k !== mark), [strokes[mark]]];
 }
 
 let wantUrl = "";
@@ -41,7 +69,10 @@ export async function loadPen(url: string) {
   wantUrl = url;
   data = null;
   const d = await (await fetch(url)).json();
-  if (url === wantUrl) { data = d; anchorCache.clear(); }   // a slower, older load must not replace a newer font's strokes
+  if (url === wantUrl) {
+    data = d; anchorCache.clear();
+    xHeight = -Math.min(...(d.glyphs.x ?? [[[0, -0.5]]]).flat().map((p: P) => p[1]));   // midline from the font's own x
+  }   // a slower, older load must not replace a newer font's strokes
 }
 
 function overlay(term: Terminal): SVGSVGElement | null {
@@ -65,10 +96,10 @@ function overlay(term: Terminal): SVGSVGElement | null {
  * A word ends at a non-letter, a jump, or a pause.
  */
 const WORD_GAP_MS = 1200;   // a longer pause between letters ends the word
-const JOINS = /[A-Za-z0-9']/;
+const JOINS = /[A-Za-z]/;
 // k0: viewport row the group was drawn at; ends: col → where that letter's last stroke ended (x, y − baseline)
-type Joins = { g: SVGGElement; marker: IMarker; k0: number; ends: Map<number, [number, number]> };
-let word: (Joins & { row: number; col: number; end: [number, number]; until: number; timer?: number }) | null = null;
+type Joins = { g: SVGGElement; marker: IMarker; k0: number; ends: Map<number, [number, number, string]> };
+let word: (Joins & { row: number; col: number; end: [number, number]; prev: string; until: number; timer?: number }) | null = null;
 const kept: Joins[] = [];
 
 function endWord() {
@@ -104,11 +135,11 @@ function dropJoinsAt(line: number, col: number) {
     }
 }
 /** End of a letter already on the page just left of `col`, so a new letter can join on to it. */
-function endBefore(term: Terminal, line: number, col: number, baseline: number): [number, number] | null {
+function endBefore(term: Terminal, line: number, col: number, baseline: number): [number, number, string] | null {
   if (!JOINS.test(term.buffer.active.getLine(line)?.getCell(col - 1)?.getChars() ?? "")) return null;
   for (const j of kept) {
     const e = !j.marker.isDisposed && j.marker.line === line ? j.ends.get(col - 1) : undefined;
-    if (e) return [e[0], baseline + e[1]];
+    if (e) return [e[0], baseline + e[1], e[2]];
   }
   return null;
 }
@@ -164,27 +195,37 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     const x0 = col * dims.width;
     const toPx = (st: [number, number][]) => st.map(([x, y]) => [x0 + x * fs, baseline + y * fs]);
     const joins = cursive && JOINS.test(ch);
-    if (!joins || !word || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
+    const intoCapital = /[A-Z]/.test(ch);   // a capital starts with its own entry stroke
+    if (!joins || intoCapital || !word || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
 
     const lineAbs = buf.baseY + buf.cursorY;
     dropJoinsAt(lineAbs, col);   // retyping a cell: its old join goes
-    let from = joins && word ? word.end : null;
+    let from: [number, number, string] | null = joins && word ? [...word.end, word.prev] : null;
     if (joins && !word) {
-      from = endBefore(term, lineAbs, col, baseline);   // e.g. retyping after a backspace
+      from = intoCapital ? null : endBefore(term, lineAbs, col, baseline);   // e.g. retyping after a backspace
       const marker = term.registerMarker(0);
       if (marker) {
         word = { g: document.createElementNS("http://www.w3.org/2000/svg", "g"), marker, k0: lineAbs - buf.viewportY, ends: new Map(),
-                 row: buf.cursorY, col, end: [x0, baseline], until: 0 };
+                 row: buf.cursorY, col, end: [x0, baseline], prev: ch, until: 0 };
         root.appendChild(word.g);
       }
     }
     if (joins && word && from) {
       // connector: from the last letter's exit to this letter's entry
-      const [ex, ey] = from;
+      const [ex, ey, prev] = from;
       const [sx, sy] = toPx([anchors(ch)!.entry])[0];
-      // a garland: a soft dip just under the lower of the two ends
-      const gap = sx - ex, low = Math.max(ey, sy) + 0.1 * fs;
-      const d = `M${ex.toFixed(2)} ${ey.toFixed(2)}C${(ex + gap * 0.35).toFixed(2)} ${low.toFixed(2)} ${(sx - gap * 0.35).toFixed(2)} ${low.toFixed(2)} ${sx.toFixed(2)} ${sy.toFixed(2)}`;
+      const gap = sx - ex, f = (n: number) => n.toFixed(2);
+      let d: string;
+      if (HIGH_EXIT.includes(prev) || DESCENDS.includes(prev)) {
+        // tow-truck / descender: run to the baseline between the letters, then rise into the entry
+        const mx = ex + gap * 0.5;
+        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.2)} ${f(ey)} ${f(mx - gap * 0.2)} ${f(baseline)} ${f(mx)} ${f(baseline)}`
+          + `C${f(mx + gap * 0.2)} ${f(baseline)} ${f(sx - gap * 0.15)} ${f(sy)} ${f(sx)} ${f(sy)}`;
+      } else {
+        // a garland: a soft dip just under the lower of the two ends
+        const low = Math.max(ey, sy) + 0.08 * fs;
+        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.35)} ${f(low)} ${f(sx - gap * 0.35)} ${f(low)} ${f(sx)} ${f(sy)}`;
+      }
       const ms = Math.max(MIN_MS / 2, (Math.hypot(sx - ex, sy - ey) / fs / SPEED_EM_PER_S) * 1000) / hurry;
       strokePath(word.g, d, ink, nib * 0.8, ms, t);
       // the letter this join leads into, and when it lands on the page
@@ -196,19 +237,21 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     root.appendChild(g);
     let last: Animation | null = null;
     let end: [number, number] = [x0, baseline];
-    for (const [k, st] of strokes.entries()) {
+    const a = anchors(ch);
+    const order = cursive && a ? [...a.body, ...a.marks] : strokes;   // dots and crosses after the body
+    for (const [k, st] of order.entries()) {
       const pts = toPx(st);
       const len = pts.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) : 0), 0);
       const ms = Math.min(MAX_MS, Math.max(MIN_MS, (len / fs / SPEED_EM_PER_S) * 1000)) / hurry;
       last = strokePath(g, pts.map((p, k) => `${k ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(""), ink, nib, ms, t);
       end = pts[pts.length - 1] as [number, number];
-      t += ms + (k < strokes.length - 1 || !joins ? LIFT_MS / hurry : 0);
+      t += ms + (k < order.length - 1 || !joins ? LIFT_MS / hurry : 0);
     }
     if (last) last.onfinish = () => g.remove(); else g.remove();
 
     if (joins && word) {
       end = toPx([anchors(ch)!.exit])[0] as [number, number];   // joins leave from the letter's exit
-      word.col = col + 1; word.end = end; word.ends.set(col, [end[0], end[1] - baseline]); word.until = now + t + WORD_GAP_MS;
+      word.col = col + 1; word.end = end; word.prev = ch; word.ends.set(col, [end[0], end[1] - baseline, ch]); word.until = now + t + WORD_GAP_MS;
       clearTimeout(word.timer);
       word.timer = window.setTimeout(endWord, t + WORD_GAP_MS);
     }
