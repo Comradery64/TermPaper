@@ -47,7 +47,8 @@ function overlay(term: Terminal): SVGSVGElement | null {
  */
 const WORD_GAP_MS = 1200;   // a longer pause between letters ends the word
 const JOINS = /[A-Za-z0-9']/;
-type Joins = { g: SVGGElement; marker: IMarker; k0: number };   // k0: viewport row the group was drawn at
+// k0: viewport row the group was drawn at; ends: col → where that letter's last stroke ended (x, y − baseline)
+type Joins = { g: SVGGElement; marker: IMarker; k0: number; ends: Map<number, [number, number]> };
 let word: (Joins & { row: number; col: number; end: [number, number]; until: number; timer?: number }) | null = null;
 const kept: Joins[] = [];
 
@@ -67,14 +68,30 @@ export function syncJoins(term: Terminal) {
     if (j.marker.isDisposed) { drop(j); continue; }
     j.g.style.display = buf.type === "alternate" ? "none" : "";
     j.g.setAttribute("transform", `translate(0 ${((j.marker.line - buf.viewportY) - j.k0) * h})`);
-    if (j === word) continue;   // letters of the word being written are still on their way
-    const line = buf.getLine(j.marker.line);
+    const line = buf.getLine(j.marker.line), now = performance.now();
     for (const p of Array.from(j.g.children) as SVGElement[]) {
-      const ch = line?.getCell(Number(p.dataset.col))?.getChars() ?? "";
-      if (!ch.trim()) p.remove();
+      if (now < Number(p.dataset.at)) continue;   // its letter is still being written
+      // the letter this join leads into was erased or overwritten
+      if ((line?.getCell(Number(p.dataset.col))?.getChars() ?? "") !== p.dataset.ch) p.remove();
     }
-    if (!j.g.childElementCount) drop(j);
+    if (!j.g.childElementCount && j !== word) drop(j);   // the word being written may not have a join yet
   }
+}
+function dropJoinsAt(line: number, col: number) {
+  for (const j of word ? [...kept, word] : kept)
+    if (!j.marker.isDisposed && j.marker.line === line) {
+      j.g.querySelectorAll(`[data-col="${col}"]`).forEach((p) => p.remove());
+      j.ends.delete(col);
+    }
+}
+/** End of a letter already on the page just left of `col`, so a new letter can join on to it. */
+function endBefore(term: Terminal, line: number, col: number, baseline: number): [number, number] | null {
+  if (!JOINS.test(term.buffer.active.getLine(line)?.getCell(col - 1)?.getChars() ?? "")) return null;
+  for (const j of kept) {
+    const e = !j.marker.isDisposed && j.marker.line === line ? j.ends.get(col - 1) : undefined;
+    if (e) return [e[0], baseline + e[1]];
+  }
+  return null;
 }
 function drop(j: Joins) {
   j.g.remove(); j.marker.dispose();
@@ -130,14 +147,27 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     const joins = cursive && JOINS.test(ch);
     if (!joins || !word || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
 
-    if (joins && word) {
+    const lineAbs = buf.baseY + buf.cursorY;
+    dropJoinsAt(lineAbs, col);   // retyping a cell: its old join goes
+    let from = joins && word ? word.end : null;
+    if (joins && !word) {
+      from = endBefore(term, lineAbs, col, baseline);   // e.g. retyping after a backspace
+      const marker = term.registerMarker(0);
+      if (marker) {
+        word = { g: document.createElementNS("http://www.w3.org/2000/svg", "g"), marker, k0: lineAbs - buf.viewportY, ends: new Map(),
+                 row: buf.cursorY, col, end: [x0, baseline], until: 0 };
+        root.appendChild(word.g);
+      }
+    }
+    if (joins && word && from) {
       // connector: leave the last letter low and forward, arrive at this letter's first stroke
-      const [ex, ey] = word.end;
+      const [ex, ey] = from;
       const [sx, sy] = toPx(strokes[0])[0];
       const d = `M${ex.toFixed(2)} ${ey.toFixed(2)}C${(ex + dims.width * 0.3).toFixed(2)} ${(baseline + 0.02 * fs).toFixed(2)} ${(sx - dims.width * 0.15).toFixed(2)} ${(sy + 0.15 * fs).toFixed(2)} ${sx.toFixed(2)} ${sy.toFixed(2)}`;
       const ms = Math.max(MIN_MS / 2, (Math.hypot(sx - ex, sy - ey) / fs / SPEED_EM_PER_S) * 1000) / hurry;
       strokePath(word.g, d, ink, nib * 0.8, ms, t);
-      (word.g.lastElementChild as SVGElement).dataset.col = String(col);   // the letter this join leads into
+      // the letter this join leads into, and when it lands on the page
+      Object.assign((word.g.lastElementChild as SVGElement).dataset, { col: String(col), ch, at: String(now + t + 200) });
       t += ms;   // no lift: the pen flows straight into the letter
     }
 
@@ -155,18 +185,8 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     }
     if (last) last.onfinish = () => g.remove(); else g.remove();
 
-    if (joins) {
-      if (!word) {
-        const marker = term.registerMarker(0);
-        if (marker) {
-          word = { g: document.createElementNS("http://www.w3.org/2000/svg", "g"), marker, k0: buf.baseY + buf.cursorY - buf.viewportY,
-                   row: buf.cursorY, col, end, until: 0 };
-          root.appendChild(word.g);
-        }
-      }
-    }
     if (joins && word) {
-      word.col = col + 1; word.end = end; word.until = now + t + WORD_GAP_MS;
+      word.col = col + 1; word.end = end; word.ends.set(col, [end[0], end[1] - baseline]); word.until = now + t + WORD_GAP_MS;
       clearTimeout(word.timer);
       word.timer = window.setTimeout(endWord, t + WORD_GAP_MS);
     }
