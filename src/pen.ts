@@ -8,7 +8,7 @@
 import type { IMarker, Terminal } from "@xterm/xterm";
 
 type Stroke = [number, number][];
-let data: { w: number; asc: number; desc: number; glyphs: Record<string, Stroke[]> } | null = null;
+let data: { w: number; asc: number; desc: number; body?: Record<string, number>; join?: Record<string, [P, P]>; glyphs: Record<string, Stroke[]> } | null = null;
 let svg: SVGSVGElement | null = null;
 
 const SPEED_EM_PER_S = 9;   // pen travel speed; ~120 ms for a typical lowercase
@@ -19,49 +19,27 @@ const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1
 
 /**
  * Cursive joining rules (school cursive: exit stroke of one letter → entry point of the next).
- *  - Most letters leave from the baseline, at their right.
- *  - b o v w end high: they leave from the midline, and the join dips to the baseline
- *    before rising into the next letter ("tow-truck" letters).
- *  - g j p q y leave from the tail of the descender and climb back through the baseline.
- *  - Round letters (a c d g o q) are entered at the top of the bowl, on the midline;
- *    the rest from the baseline at their left.
- *  - The dot of i/j and the cross of t/f are not part of the joined stroke: they are drawn
- *    after the letter's body and never used as a join point.
+ * Each lowercase letter's entry and exit are fixed in the strokes file (tools/pen_strokes.py:
+ * per-letter hints snapped onto the letter), and its strokes start at the entry. The join's
+ * shape then depends on the two letters:
+ *  - b o v w r end high, on the midline: into a letter entered near the midline they bridge
+ *    across level; into one entered low the join dips to the baseline first ("tow-truck");
+ *    g j p q y climb back from the descender.
+ *  - Tall letters are entered at the top of the ascender: the join is an upstroke loop.
+ *  - Round letters (a c d g o q) and s are entered at the top, approached over it from the left.
+ *  - Otherwise a garland: a soft dip under the lower of the two ends.
+ *  - The dot of i/j and the cross of t/f are written after the body, never joined.
  *  - No join into a capital, none between words, and digits don't join.
- * Points are em, y down from the baseline; the midline is the font's x-height.
+ * Points are em, y down from the baseline.
  */
 type P = [number, number];
-const HIGH_EXIT = "bovw", DESCENDS = "gjpqy", ROUND = "acdgoq";
-const JOIN_PULL = 1.2;   // how strongly distance from the target height counts against x
-const anchorCache = new Map<string, { entry: P; exit: P; body: P[][]; marks: P[][] }>();
-let xHeight = 0.5;
-function anchors(ch: string) {
-  let a = anchorCache.get(ch);
-  if (!a && data?.glyphs[ch]) {
-    const [body, marks] = splitMarks(ch, data.glyphs[ch]);
-    const pts = body.flat();
-    const near = (y: number, dir: number) => (p: P) => dir * p[0] - JOIN_PULL * Math.abs(p[1] - y);
-    const best = (f: (p: P) => number) => pts.reduce((b, p) => (f(p) > f(b) ? p : b));
-    const exit = HIGH_EXIT.includes(ch) ? best(near(-xHeight, 1))
-      : DESCENDS.includes(ch) ? best((p) => p[1] + 0.3 * p[0])          // lowest, then rightmost: the tail
-      : best(near(0, 1));
-    const entry = ROUND.includes(ch) ? best(near(-xHeight, -1)) : best(near(0, -1));
-    a = { exit, entry, body, marks };
-    anchorCache.set(ch, a);
-  }
-  return a;
-}
-/** Separate i/j dots and t/f crosses (written after the body) from the joined body strokes. */
-function splitMarks(ch: string, strokes: P[][]): [P[][], P[][]] {
-  if (strokes.length < 2) return [strokes, []];
-  const len = (s: P[]) => s.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - s[k - 1][0], p[1] - s[k - 1][1]) : 0), 0);
-  let mark = -1;
-  if ("ij".includes(ch)) mark = strokes.reduce((m, s, k) => (len(s) < len(strokes[m]) ? k : m), 0);   // the dot: shortest
-  else if ("tf".includes(ch)) {                                                                    // the cross: flattest
-    const flat = (s: P[]) => Math.abs(s[s.length - 1][0] - s[0][0]) - Math.abs(s[s.length - 1][1] - s[0][1]);
-    mark = strokes.reduce((m, s, k) => (flat(s) > flat(strokes[m]) ? k : m), 0);
-  }
-  return mark < 0 ? [strokes, []] : [strokes.filter((_, k) => k !== mark), [strokes[mark]]];
+const ROUTE_LOW = "bovwrgjpqy";   // joins from these run down to the baseline first
+function anchors(ch: string): { entry: P; exit: P; body: P[][]; marks: P[][] } | undefined {
+  const strokes = data?.glyphs[ch];
+  if (!strokes?.length) return;
+  const n = data!.body?.[ch] ?? strokes.length, j = data!.join?.[ch];
+  const body = strokes.slice(0, n), marks = strokes.slice(n);
+  return { entry: j?.[0] ?? body[0][0], exit: j?.[1] ?? body[body.length - 1].at(-1)!, body, marks };
 }
 
 let wantUrl = "";
@@ -69,10 +47,7 @@ export async function loadPen(url: string) {
   wantUrl = url;
   data = null;
   const d = await (await fetch(url)).json();
-  if (url === wantUrl) {
-    data = d; anchorCache.clear();
-    xHeight = -Math.min(...(d.glyphs.x ?? [[[0, -0.5]]]).flat().map((p: P) => p[1]));   // midline from the font's own x
-  }   // a slower, older load must not replace a newer font's strokes
+  if (url === wantUrl) data = d;   // a slower, older load must not replace a newer font's strokes
 }
 
 function overlay(term: Terminal): SVGSVGElement | null {
@@ -215,12 +190,23 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
       const [ex, ey, prev] = from;
       const [sx, sy] = toPx([anchors(ch)!.entry])[0];
       const gap = sx - ex, f = (n: number) => n.toFixed(2);
+      const xh = -Math.min(...data.glyphs.x.flat().map((p) => p[1])) * fs;   // midline height, px
       let d: string;
-      if (HIGH_EXIT.includes(prev) || DESCENDS.includes(prev)) {
+      if (sy < baseline - 1.3 * xh) {
+        // into a tall letter: an upstroke that swings right of the stem and hooks into its top
+        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.55)} ${f(Math.max(ey, baseline - 0.1 * xh))} ${f(sx + 0.18 * fs)} ${f(sy + 0.45 * fs)} ${f(sx)} ${f(sy)}`;
+      } else if ("bovwr".includes(prev) && Math.abs(sy - ey) < 0.5 * xh) {
+        // high exit into a letter entered near the midline: a level bridge, barely sagging
+        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.4)} ${f(ey + 0.05 * fs)} ${f(sx - gap * 0.4)} ${f(sy + 0.05 * fs)} ${f(sx)} ${f(sy)}`;
+      } else if (ROUTE_LOW.includes(prev)) {
         // tow-truck / descender: run to the baseline between the letters, then rise into the entry
         const mx = ex + gap * 0.5;
         d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.2)} ${f(ey)} ${f(mx - gap * 0.2)} ${f(baseline)} ${f(mx)} ${f(baseline)}`
           + `C${f(mx + gap * 0.2)} ${f(baseline)} ${f(sx - gap * 0.15)} ${f(sy)} ${f(sx)} ${f(sy)}`;
+      } else if ("acdgoqs".includes(ch)) {
+        // into a round letter: rise early and come over the top of the bowl from the left,
+        // instead of cutting through its side
+        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.25)} ${f(ey + 0.04 * fs)} ${f(sx - 0.45 * fs)} ${f(sy)} ${f(sx)} ${f(sy)}`;
       } else {
         // a garland: a soft dip just under the lower of the two ends
         const low = Math.max(ey, sy) + 0.08 * fs;

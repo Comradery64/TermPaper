@@ -241,24 +241,106 @@ for code in range(0x21, 0x7f):
     glyph = glyph_strokes(ch, START.get(ch))
     out[ch] = ORDER[ch](glyph) if ch in ORDER else glyph
 
+# --- lowercase in writing order: how a hand enters and leaves each letter -------------------
+# Cursive joins run from where one letter's last body stroke ENDS to where the next letter's
+# first stroke STARTS, so each letter's strokes are ordered and pointed the way a person
+# writes it. Hints are (x across the glyph 0..1, height level): where the pen should come in
+# and where it should leave. Dots (i, j) and crosses (t, f) are marks, written after the body.
+pts_of = lambda ch: [p for st in out.get(ch, []) for p in st]
+LEVEL = {"top": min(y for _, y in pts_of("l")), "mid": min(y for _, y in pts_of("x")),
+         "base": 0.0, "desc": max(y for _, y in pts_of("p"))}
+ENTRY = {  # where the pen comes in
+    "a": (.75, "mid"), "c": (.85, "mid"), "d": (.7, "mid"), "g": (.75, "mid"), "o": (.6, "mid"), "q": (.75, "mid"),
+    "e": (.05, .55), "s": (.55, "mid"), "f": (.9, "top"),
+    "b": (.15, "top"), "h": (.15, "top"), "k": (.15, "top"), "l": (.35, "top"), "t": (.4, "top"),
+    "i": (.3, "mid"), "j": (.4, "mid"), "m": (0, "mid"), "n": (0, "mid"), "p": (.1, "mid"), "r": (.1, "mid"),
+    "u": (0, "mid"), "v": (0, "mid"), "w": (0, "mid"), "x": (0, "mid"), "y": (0, "mid"), "z": (0, "mid"),
+}
+EXIT = {   # where the pen leaves
+    "b": (1, "mid"), "o": (1, "mid"), "v": (1, "mid"), "w": (1, "mid"), "r": (1, "mid"),
+    "g": (.2, "desc"), "j": (.2, "desc"), "y": (.2, "desc"), "q": (1, "desc"), "f": (.5, "base"),
+    "s": (.85, "base"), "p": (.6, "base"),
+}
+MARKS = {"i": "dot", "j": "dot", "t": "cross", "f": "cross"}
+
+def hint_point(glyph, hint):
+    xs = [x for st in glyph for x, _ in st]
+    x0, x1 = min(xs), max(xs)
+    hx, lv = hint
+    y = LEVEL[lv] if isinstance(lv, str) else LEVEL["mid"] * lv   # a number: that fraction of the midline height
+    return (x0 + hx * (x1 - x0), y)
+
+def split_marks(ch, glyph):
+    if ch not in MARKS or len(glyph) < 2: return glyph, []
+    L = lambda st: sum(math.dist(st[i], st[i + 1]) for i in range(len(st) - 1))
+    if MARKS[ch] == "dot": k = min(range(len(glyph)), key=lambda i: L(glyph[i]))
+    else: k = max(range(len(glyph)), key=lambda i: abs(glyph[i][-1][0] - glyph[i][0][0]) - abs(glyph[i][-1][1] - glyph[i][0][1]))
+    mark = glyph[k]
+    if MARKS[ch] == "cross": mark = mark if mark[0][0] <= mark[-1][0] else mark[::-1]   # crosses go left to right
+    return [st for i, st in enumerate(glyph) if i != k], [mark]
+
+def nearest_on(glyph, q):
+    """Closest point to q on any stroke (projected onto segments): (stroke index, segment index, point)."""
+    best = (1e9, 0, 0, q)
+    for i, st in enumerate(glyph):
+        for k in range(len(st) - 1):
+            (ax, ay), (bx, by) = st[k], st[k + 1]
+            dx, dy = bx - ax, by - ay
+            t = max(0.0, min(1.0, ((q[0] - ax) * dx + (q[1] - ay) * dy) / ((dx * dx + dy * dy) or 1)))
+            p = (ax + t * dx, ay + t * dy)
+            d = math.dist(p, q)
+            if d < best[0]: best = (d, i, k, p)
+    return best[1:]
+
+def hand_order(ch, glyph):
+    """Body strokes reordered so the pen starts exactly at the entry; returns (strokes, body count, entry, exit)."""
+    body, marks = split_marks(ch, glyph)
+    i, k, p = nearest_on(body, hint_point(body, ENTRY[ch]))
+    p = [round(p[0], 4), round(p[1], 4)]
+    st = body[i]
+    if math.dist(p, st[0]) < 0.02: first = [st]
+    elif math.dist(p, st[-1]) < 0.02: first = [st[::-1]]
+    else:   # entry inside a stroke: start there, run to one end, then come back for the other part
+        a, b = [p] + st[k + 1:], [p] + st[k::-1]
+        first = [a, b] if len(a) >= len(b) else [b, a]
+    rest = [s2 for j, s2 in enumerate(body) if j != i]
+    order = first + rest
+    _, _, x = nearest_on(order, hint_point(body, EXIT.get(ch, (1, "base"))))
+    return order + marks, len(order), p, [round(x[0], 4), round(x[1], 4)]
+
+body_count, join_at = {}, {}
+for ch in ENTRY:
+    if ch in out and out[ch]:
+        out[ch], body_count[ch], ein, eout = hand_order(ch, out[ch])
+        join_at[ch] = [ein, eout]
+
 tt = TTFont(FONT); upm = tt["head"].unitsPerEm
 asc, desc = tt["hhea"].ascent / upm, tt["hhea"].descent / upm
-json.dump({"w": round(float(np.median(widths)) / S, 4), "asc": round(asc, 4), "desc": round(desc, 4), "glyphs": out},
+json.dump({"w": round(float(np.median(widths)) / S, 4), "asc": round(asc, 4), "desc": round(desc, 4), "glyphs": out,
+           "body": body_count,    # lowercase: how many leading strokes are the body (the rest are dots/crosses)
+           "join": join_at},      # lowercase: [entry, exit] points where cursive joins arrive and leave
           open("public/" + OUT, "w"), separators=(",", ":"))
 print(OUT, "glyphs:", len(out), "nib(em):", round(float(np.median(widths)) / S, 4), "asc/desc:", round(asc, 4), round(desc, 4))
 for ch in "aeBk%":
     print(ch, "strokes:", len(out[ch]), [len(s) for s in out[ch]])
 
-# debug sheet: strokes colored in order, start of each stroke marked
-sample = "#+=*$&SaeBk%"
-sheet = Image.new("RGB", (len(sample) * 160, 240), "white")
+# debug sheet: lowercase in writing order; green = where the pen comes in, red = where it leaves
+sample = "abcdefghijklmnopqrstuvwxyz"
+sheet = Image.new("RGB", (13 * 110, 2 * 200), "white")
 dr = ImageDraw.Draw(sheet)
 cols = ["#1c2a60", "#b3261e", "#2e7d32", "#8a6d00", "#7b3f8c", "#0e6e7c", "#555"]
 for i, ch in enumerate(sample):
-    ox, oy = i * 160 + 20, 180
-    for j, st in enumerate(out[ch]):
-        pts = [(ox + x * 150, oy + y * 150) for x, y in st]
-        if len(pts) > 1: dr.line(pts, fill=cols[j % len(cols)], width=4, joint="curve")
-        dr.ellipse([pts[0][0]-5, pts[0][1]-5, pts[0][0]+5, pts[0][1]+5], fill=cols[j % len(cols)])
-        dr.text((pts[0][0]+6, pts[0][1]-14), str(j+1), fill=cols[j % len(cols)])
+    ox, oy = (i % 13) * 110 + 20, (i // 13) * 200 + 140
+    for lv in ("top", "mid", "base", "desc"):
+        dr.line([(ox - 10, oy + LEVEL[lv] * 110), (ox + 90, oy + LEVEL[lv] * 110)], fill="#dde6ee")
+    g = out[ch]
+    for j, st in enumerate(g):
+        pts = [(ox + x * 110, oy + y * 110) for x, y in st]
+        if len(pts) > 1: dr.line(pts, fill=cols[j % len(cols)], width=3, joint="curve")
+        dr.text((pts[0][0] + 4, pts[0][1] - 12), str(j + 1), fill=cols[j % len(cols)])
+    e0, e1 = join_at[ch]
+    for (x, y), c in (((e0), "#16a34a"), ((e1), "#dc2626")):
+        X, Y = ox + x * 110, oy + y * 110
+        dr.ellipse([X - 6, Y - 6, X + 6, Y + 6], outline=c, width=3)
+    dr.text((ox, oy + 45), ch, fill="#000")
 sheet.save("/tmp/strokes_debug.png")
