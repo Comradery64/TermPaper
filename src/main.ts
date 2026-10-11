@@ -159,10 +159,11 @@ function demoMode() {
   (window as any).__tp = { term, enqueue, inkify, setFont, state: () => ({ typing, ready, pending }) };
   // debug: ?settings=open opens the panel on load (headless screenshots of the page turn)
   if (new URLSearchParams(location.search).get("settings") === "open") openSettings(FONTS, settingsChanged, () => term.focus());
+  let typed = 0;   // like a shell's line editor: backspace stops at the prompt
   term.onData((s) => {
-    if (s === "\r") { enqueue(inkify("\x1b]133;C\x07\r\n(demo: no shell)\r\n")); prompt(); }
-    else if (s === "\x7f") enqueue("\b \b");
-    else enqueue(s);
+    if (s === "\r") { typed = 0; enqueue(inkify("\x1b]133;C\x07\r\n(demo: no shell)\r\n")); prompt(); }
+    else if (s === "\x7f") { if (typed > 0) { typed--; enqueue("\b \b"); } }
+    else if (!s.startsWith("\x1b")) { typed += [...s].length; enqueue(s); }
   });
   new ResizeObserver(() => { fit.fit(); applyRuling(); }).observe(el);
   term.attachCustomKeyEventHandler(zoomKeys);

@@ -17,12 +17,31 @@ const LIFT_MS = 18;         // pause when the pen lifts between strokes
 // debug: open with ?pen=slow to watch strokes at 1/20 speed
 const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1;
 
+/**
+ * Where a cursive join leaves a letter and where it enters the next, in em (y down from the
+ * baseline): the exit is the rightmost point, the entry the leftmost, each preferring the
+ * middle of the x-height band where hand-written joins run (not the top of an ascender).
+ */
+const anchorCache = new Map<string, { entry: [number, number]; exit: [number, number] }>();
+const JOIN_Y = -0.28, JOIN_PULL = 0.6;   // band centre (em) and how strongly height counts against x
+function anchors(ch: string) {
+  let a = anchorCache.get(ch);
+  if (!a && data?.glyphs[ch]) {
+    const pts = data.glyphs[ch].flat();
+    const score = (p: [number, number], dir: number) => dir * p[0] - JOIN_PULL * Math.abs(p[1] - JOIN_Y);
+    const best = (dir: number) => pts.reduce((b, p) => (score(p, dir) > score(b, dir) ? p : b));
+    a = { exit: best(1), entry: best(-1) };
+    anchorCache.set(ch, a);
+  }
+  return a;
+}
+
 let wantUrl = "";
 export async function loadPen(url: string) {
   wantUrl = url;
   data = null;
   const d = await (await fetch(url)).json();
-  if (url === wantUrl) data = d;   // a slower, older load must not replace a newer font's strokes
+  if (url === wantUrl) { data = d; anchorCache.clear(); }   // a slower, older load must not replace a newer font's strokes
 }
 
 function overlay(term: Terminal): SVGSVGElement | null {
@@ -160,10 +179,12 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
       }
     }
     if (joins && word && from) {
-      // connector: leave the last letter low and forward, arrive at this letter's first stroke
+      // connector: from the last letter's exit to this letter's entry
       const [ex, ey] = from;
-      const [sx, sy] = toPx(strokes[0])[0];
-      const d = `M${ex.toFixed(2)} ${ey.toFixed(2)}C${(ex + dims.width * 0.3).toFixed(2)} ${(baseline + 0.02 * fs).toFixed(2)} ${(sx - dims.width * 0.15).toFixed(2)} ${(sy + 0.15 * fs).toFixed(2)} ${sx.toFixed(2)} ${sy.toFixed(2)}`;
+      const [sx, sy] = toPx([anchors(ch)!.entry])[0];
+      // a garland: a soft dip just under the lower of the two ends
+      const gap = sx - ex, low = Math.max(ey, sy) + 0.1 * fs;
+      const d = `M${ex.toFixed(2)} ${ey.toFixed(2)}C${(ex + gap * 0.35).toFixed(2)} ${low.toFixed(2)} ${(sx - gap * 0.35).toFixed(2)} ${low.toFixed(2)} ${sx.toFixed(2)} ${sy.toFixed(2)}`;
       const ms = Math.max(MIN_MS / 2, (Math.hypot(sx - ex, sy - ey) / fs / SPEED_EM_PER_S) * 1000) / hurry;
       strokePath(word.g, d, ink, nib * 0.8, ms, t);
       // the letter this join leads into, and when it lands on the page
@@ -186,6 +207,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     if (last) last.onfinish = () => g.remove(); else g.remove();
 
     if (joins && word) {
+      end = toPx([anchors(ch)!.exit])[0] as [number, number];   // joins leave from the letter's exit
       word.col = col + 1; word.end = end; word.ends.set(col, [end[0], end[1] - baseline]); word.until = now + t + WORD_GAP_MS;
       clearTimeout(word.timer);
       word.timer = window.setTimeout(endWord, t + WORD_GAP_MS);
