@@ -5,7 +5,7 @@
  * in em units relative to the baseline. An invisible pen draws each stroke in
  * turn with a round nib; the real glyph is written when the pen finishes.
  */
-import type { Terminal } from "@xterm/xterm";
+import type { IMarker, Terminal } from "@xterm/xterm";
 
 type Stroke = [number, number][];
 let data: { w: number; asc: number; desc: number; glyphs: Record<string, Stroke[]> } | null = null;
@@ -17,9 +17,12 @@ const LIFT_MS = 18;         // pause when the pen lifts between strokes
 // debug: open with ?pen=slow to watch strokes at 1/20 speed
 const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1;
 
+let wantUrl = "";
 export async function loadPen(url: string) {
+  wantUrl = url;
   data = null;
-  data = await (await fetch(url)).json();
+  const d = await (await fetch(url)).json();
+  if (url === wantUrl) data = d;   // a slower, older load must not replace a newer font's strokes
 }
 
 function overlay(term: Terminal): SVGSVGElement | null {
@@ -37,19 +40,50 @@ function overlay(term: Terminal): SVGSVGElement | null {
 
 /**
  * Cursive: letters typed in a run are joined like a word written without lifting the pen.
- * A connecting stroke runs from where the last letter ended to where the next begins;
- * the connectors stay until the word ends (a non-letter, a jump, or a pause), then fade.
+ * A connecting stroke runs from where the last letter ended to where the next begins.
+ * The joins stay on the page: each word's group is pinned to its buffer line with a marker,
+ * follows it when the page scrolls, and a join goes when the letter it leads into is erased.
+ * A word ends at a non-letter, a jump, or a pause.
  */
 const WORD_GAP_MS = 1200;   // a longer pause between letters ends the word
 const JOINS = /[A-Za-z0-9']/;
-let word: { g: SVGGElement; row: number; col: number; end: [number, number]; until: number; timer?: number } | null = null;
+type Joins = { g: SVGGElement; marker: IMarker; k0: number };   // k0: viewport row the group was drawn at
+let word: (Joins & { row: number; col: number; end: [number, number]; until: number; timer?: number }) | null = null;
+const kept: Joins[] = [];
 
 function endWord() {
   if (!word) return;
-  const g = word.g;
   clearTimeout(word.timer);
+  kept.push(word);
   word = null;
-  g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: "forwards" }).onfinish = () => g.remove();
+}
+
+/** Keep the joins on their lines: follow scrolling, drop joins whose letters were erased. */
+export function syncJoins(term: Terminal) {
+  const buf = term.buffer.active;
+  const h = (term as any)._core?._renderService?.dimensions?.css?.cell?.height;
+  if (!h) return;
+  for (const j of word ? [...kept, word] : [...kept]) {
+    if (j.marker.isDisposed) { drop(j); continue; }
+    j.g.style.display = buf.type === "alternate" ? "none" : "";
+    j.g.setAttribute("transform", `translate(0 ${((j.marker.line - buf.viewportY) - j.k0) * h})`);
+    if (j === word) continue;   // letters of the word being written are still on their way
+    const line = buf.getLine(j.marker.line);
+    for (const p of Array.from(j.g.children) as SVGElement[]) {
+      const ch = line?.getCell(Number(p.dataset.col))?.getChars() ?? "";
+      if (!ch.trim()) p.remove();
+    }
+    if (!j.g.childElementCount) drop(j);
+  }
+}
+function drop(j: Joins) {
+  j.g.remove(); j.marker.dispose();
+  const i = kept.indexOf(j); if (i >= 0) kept.splice(i, 1);
+}
+/** Font or size changed: the joins no longer fit the letters. */
+export function clearJoins() {
+  endWord();
+  for (const j of [...kept]) drop(j);
 }
 
 function strokePath(root: SVGGElement, d: string, ink: string, width: number, ms: number, delay: number): Animation {
@@ -103,6 +137,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
       const d = `M${ex.toFixed(2)} ${ey.toFixed(2)}C${(ex + dims.width * 0.3).toFixed(2)} ${(baseline + 0.02 * fs).toFixed(2)} ${(sx - dims.width * 0.15).toFixed(2)} ${(sy + 0.15 * fs).toFixed(2)} ${sx.toFixed(2)} ${sy.toFixed(2)}`;
       const ms = Math.max(MIN_MS / 2, (Math.hypot(sx - ex, sy - ey) / fs / SPEED_EM_PER_S) * 1000) / hurry;
       strokePath(word.g, d, ink, nib * 0.8, ms, t);
+      (word.g.lastElementChild as SVGElement).dataset.col = String(col);   // the letter this join leads into
       t += ms;   // no lift: the pen flows straight into the letter
     }
 
@@ -121,7 +156,16 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     if (last) last.onfinish = () => g.remove(); else g.remove();
 
     if (joins) {
-      if (!word) { word = { g: document.createElementNS("http://www.w3.org/2000/svg", "g"), row: buf.cursorY, col, end, until: 0 }; root.appendChild(word.g); }
+      if (!word) {
+        const marker = term.registerMarker(0);
+        if (marker) {
+          word = { g: document.createElementNS("http://www.w3.org/2000/svg", "g"), marker, k0: buf.baseY + buf.cursorY - buf.viewportY,
+                   row: buf.cursorY, col, end, until: 0 };
+          root.appendChild(word.g);
+        }
+      }
+    }
+    if (joins && word) {
       word.col = col + 1; word.end = end; word.until = now + t + WORD_GAP_MS;
       clearTimeout(word.timer);
       word.timer = window.setTimeout(endWord, t + WORD_GAP_MS);

@@ -3,7 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
-import { loadPen, penWrite } from "./pen";
+import { loadPen, penWrite, syncJoins, clearJoins } from "./pen";
 import { openSettings, type Changed } from "./settings";
 import { prefs, savePrefs } from "./prefs";
 import { highlightOutput, resetOutputState, InputHighlighter } from "./highlight";
@@ -30,8 +30,11 @@ let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
  * text invisible until it arrives, so a TUI repainting bold/italic text flashes meanwhile.
  */
 function loadFaces() {
-  return Promise.all(["", "bold ", "italic ", "italic bold "].map((v) =>
+  const all = Promise.all(["", "bold ", "italic ", "italic bold "].map((v) =>
     document.fonts.load(`${v}15px "${font.family}"`).catch(() => [])));
+  // never block on it: WebKit can leave the promise for a style the family lacks (the
+  // cursive families have no italic face) pending, which used to stall font switching
+  return Promise.race([all, new Promise((r) => setTimeout(r, 800))]);
 }
 
 function fontStack() { return `"${font.family}", monospace`; }
@@ -85,6 +88,7 @@ term.parser.registerOscHandler(133, (data) => {
   return true;
 });
 term.onWriteParsed(() => inputHl.update());
+term.onRender(() => syncJoins(term));   // cursive joins stay pinned to their lines
 
 async function main() {
   await Promise.all([
@@ -189,6 +193,7 @@ function applyColors() {
 }
 
 function setSize(size: number) {
+  clearJoins();
   term.options.fontSize = prefs.fontSize = Math.min(32, Math.max(9, size));
   savePrefs();
   fit.fit(); applyRuling();
@@ -197,7 +202,10 @@ function setSize(size: number) {
 async function setFont(key: string) {
   font = FONTS.find((f) => f.key === key) ?? font;
   prefs.font = font.key; savePrefs();
+  const want = font;
   await Promise.all([loadFaces(), loadPen(font.pen).catch((e) => console.warn("pen strokes", e))]);
+  if (font !== want) return;   // a newer pick arrived while this one loaded
+  clearJoins();
   term.options.fontFamily = fontStack();
   fit.fit(); applyRuling();
 }
