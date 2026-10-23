@@ -31,7 +31,7 @@ Tabs, splits and windows all depend on the PTY singleton becoming a session map.
 |---|---|---|---|
 | PTY session map (id → Pty) | P0 | MISS | prerequisite for everything below |
 | Tabs, ⌘T, ⌘W, ⌘1–9, ⌘⇧[ ] | P0 | MISS | concepts in `tools/tabs-concepts/` |
-| Splits ⌘D / ⌘⇧D, ⌘[ ⌘], ⌘⌥ arrows, dim inactive | P0 | MISS | PLAN.md says "use tmux"; this reverses that |
+| Splits ⌘D / ⌘⇧D, ⌘[ ⌘], ⌘⌥ arrows, dim inactive | P0 | MISS | was "use tmux"; now planned natively |
 | Maximize pane ⌘⇧↩ | P1 | MISS | |
 | Multiple windows ⌘N | P0 | MISS | capability allows only `main` |
 | New tab/pane inherits cwd (OSC 7 + OSC 1337 CurrentDir) | P0 | MISS | shim emits OSC 7 |
@@ -85,7 +85,7 @@ There is a good base: OSC 133 A/B/C is already emitted and parsed.
 |---|---|---|---|
 | Profiles (shell, cwd, colors, font, initial cmd) | P0 | MISS | ink presets are a start |
 | Key mappings UI + presets ("Natural Text Editing", Esc+) | P0 | MISS | |
-| User config file + hot reload | P1 | MISS | TOML is planned (HANDOFF) |
+| User config file + hot reload | P1 | MISS | TOML is planned |
 | Expose: scrollback (incl. unlimited), line height, cursor style, bell | P1 | PART | hard-coded today |
 | Any system font, non-ASCII font, ligatures | P0 | PART | fixed list, no ligatures on DOM renderer |
 | Minimum contrast, bold-as-bright, smart cursor color | P1 | PART | the luminance clamp already does some of this |

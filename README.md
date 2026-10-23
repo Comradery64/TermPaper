@@ -1,6 +1,8 @@
 # TermPaper
 
-A cross-platform terminal that looks like a sheet of ruled notebook paper. Monaspace Radon handwriting font,
+![TermPaper: blue ink for what you type, charcoal for what the machine says](docs/screenshot.png)
+
+A cross-platform terminal that looks like a sheet of ruled notebook paper. Monaspace Radon handwriting font (Victor Mono and Maple Mono, including cursive, are in settings),
 fountain-pen-blue ink for what you type, charcoal for what the machine says, and an invisible pen that writes
 each letter.
 
@@ -23,7 +25,7 @@ Debug: `http://localhost:1430/?pen=slow` plays the handwriting at 1/20 speed.
 | Key | Action |
 |---|---|
 | Cmd/Ctrl + = / − / 0 | Font size up / down / reset (ruling re-locks) |
-| Cmd/Ctrl + , | Settings: font, size, line numbers (every row / each command / off), syntax highlighting (output on, typed commands off by default), ink theme presets with per-color pickers. Saved in localStorage `prefs` |
+| Cmd/Ctrl + , | Settings: font, size, line numbers (every row / each command / off), syntax highlighting (output on, typed commands off by default), ink theme presets with per-color pickers. Saved to `prefs.json` in the app config dir |
 | Cmd/Ctrl + Shift + F | Cycle font: Radon → Victor Mono → Victor Cursive → Maple Mono → Maple Cursive (remembered; `?font=maple-cursive` in demo) |
 | Cmd+C / Cmd+V / Cmd+A | Copy / paste / select all (macOS Edit menu) |
 
@@ -68,6 +70,15 @@ uv venv /tmp/texenv && uv pip install --python /tmp/texenv/bin/python numpy pill
 | Pen speed | `SPEED_EM_PER_S`, `MIN_MS`, `MAX_MS`, `LIFT_MS` in `src/pen.ts` |
 | Traffic-light zone / timing | `ZONE`, durations in `watchTrafficLights()` |
 
+## Ghostty
+
+`ghostty/` has the same look for stock [Ghostty](https://ghostty.org) (themes, paper texture, shader, zsh helper). See `ghostty/README.md`.
+
 ## License
 
-Code: MIT. Monaspace Radon: SIL OFL 1.1.
+Code: [MIT](LICENSE), Copyright (c) 2026 Reishi.dev.
+
+Bundled fonts keep their own license, the SIL Open Font License 1.1:
+[Monaspace](https://github.com/githubnext/monaspace) (GitHub), [Victor Mono](https://github.com/rubjo/victor-mono) (Rune Bjørnerås),
+[Maple Mono](https://github.com/subframe7536/maple-font) (The Maple Mono Project Authors).
+Texts and copyright lines are in `public/fonts/LICENSES.md`. `public/pen-*.json` are strokes derived from those fonts.
