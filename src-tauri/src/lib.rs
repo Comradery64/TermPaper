@@ -14,7 +14,7 @@ struct Pty {
 struct PtyState(Mutex<Option<Pty>>);
 
 #[tauri::command]
-fn spawn(app: tauri::AppHandle, state: State<PtyState>, cols: u16, rows: u16, on_data: Channel<Vec<u8>>) -> Result<(), String> {
+fn spawn(app: tauri::AppHandle, state: State<PtyState>, cols: u16, rows: u16, on_data: Channel<Vec<u8>>) -> Result<bool, String> {
     let pair = native_pty_system()
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| e.to_string())?;
@@ -25,8 +25,10 @@ fn spawn(app: tauri::AppHandle, state: State<PtyState>, cols: u16, rows: u16, on
     let mut cmd = CommandBuilder::new(&shell);
     cmd.env("TERM", "xterm-256color");
     cmd.env("TERM_PROGRAM", "TermPaper");
+    let mut integrated = false;   // true when the shell will emit OSC 133 prompt marks
     if shell.ends_with("zsh") {
         if let Ok(dir) = install_zsh_integration(&app) {
+            integrated = true;
             if let Some(user) = std::env::var_os("ZDOTDIR") {
                 cmd.env("TERMPAPER_USER_ZDOTDIR", user);
             }
@@ -55,7 +57,7 @@ fn spawn(app: tauri::AppHandle, state: State<PtyState>, cols: u16, rows: u16, on
         let _ = old.child.kill();
     }
     *state.0.lock().unwrap() = Some(Pty { master: pair.master, writer, child });
-    Ok(())
+    Ok(integrated)
 }
 
 #[tauri::command]
@@ -133,7 +135,25 @@ fn save_prefs(app: tauri::AppHandle, json: String) -> Result<(), String> {
     std::fs::write(dir.join("prefs.json"), json).map_err(|e| e.to_string())
 }
 
+/// Startup timings from the frontend, appended to startup.log only when TERMPAPER_PERF is set.
+/// Adds the process uptime so the page's own clock can be placed on the process timeline.
+#[tauri::command]
+fn perf_log(app: tauri::AppHandle, text: String) {
+    if std::env::var_os("TERMPAPER_PERF").is_none() { return; }
+    let up = START.get().map(|t| t.elapsed().as_millis()).unwrap_or(0);
+    if let Ok(dir) = app.path().app_config_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("startup.log")) {
+            use std::io::Write;
+            let _ = writeln!(f, "rust_uptime_ms={up} {text}");
+        }
+    }
+}
+
+static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 pub fn run() {
+    START.get_or_init(std::time::Instant::now);
     tauri::Builder::default()
         .manage(PtyState::default())
         .setup(|app| {
@@ -141,7 +161,7 @@ pub fn run() {
             app.set_menu(tauri::menu::Menu::default(app.handle())?)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![spawn, write, resize, traffic_lights, load_prefs, save_prefs])
+        .invoke_handler(tauri::generate_handler![spawn, write, resize, traffic_lights, load_prefs, save_prefs, perf_log])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

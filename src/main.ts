@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
+import { mark, reportPerf } from "./perf";
 import { loadPen, penWrite, syncJoins, clearJoins } from "./pen";
 import { openSettings, type Changed } from "./settings";
 import { prefs, savePrefs } from "./prefs";
@@ -91,11 +92,13 @@ term.onWriteParsed(() => inputHl.update());
 term.onRender(() => syncJoins(term));   // cursive joins stay pinned to their lines
 
 async function main() {
+  mark("prefs");
   await Promise.all([
-    loadFaces(),
-    loadPen(font.pen).catch((e) => console.warn("pen strokes", e)),
+    loadFaces().then(() => mark("fonts")),
+    loadPen(font.pen).catch((e) => console.warn("pen strokes", e)).then(() => mark("pen")),
   ]);
   term.open(el);
+  mark("termOpen");
   scrollbar.refresh();
   applyColors();
   // DOM renderer on purpose: glyphs are real text, so the ink-on-paper
@@ -105,18 +108,25 @@ async function main() {
   }
   fit.fit();
   applyRuling();
+  mark("fitted");
   term.onData(noteTyping);   // cursor hides while keys are being typed
 
   if (!("__TAURI_INTERNALS__" in window)) return demoMode();   // plain browser: UI dev only
 
   const onData = new Channel<Uint8Array>();
   const dec = new TextDecoder();
-  onData.onmessage = (bytes) => enqueue(inkify(dec.decode(new Uint8Array(bytes), { stream: true })));
-  await invoke("spawn", { cols: term.cols, rows: term.rows, onData });
+  onData.onmessage = (bytes) => {
+    mark("firstOutput");
+    if (quietReady) settleReady();
+    enqueue(inkify(dec.decode(new Uint8Array(bytes), { stream: true })));
+  };
+  mark("spawnCall");
+  const integrated = await invoke<boolean>("spawn", { cols: term.cols, rows: term.rows, onData });
+  mark("spawned");
 
-  // ignore keystrokes until the shell has drawn its first prompt (OSC 133;A),
-  // or 2s have passed for shells without the integration
-  setTimeout(() => (ready = true), 2000);
+  // Input is dropped (not queued) until the shell has drawn its first prompt (OSC 133;A). A shell
+  // without the integration never sends one: treat it as ready once its output goes quiet.
+  if (!integrated) { quietReady = true; settleReady(); }
   const enc = new TextEncoder();
   term.onData((s) => { if (ready) invoke("write", { data: Array.from(enc.encode(s)) }); });
   term.onResize(({ cols, rows }) => invoke("resize", { cols, rows }));
@@ -220,6 +230,9 @@ const INK_SGR = "\x1b[34m";   // palette blue = theme ink, so a theme change rec
 const RESET_SGR = "\x1b[39m";
 let carry = "";
 let ready = false;
+let quietReady = false;   // no prompt marks to wait for: ready after output settles
+let quietTimer: number | undefined;
+function settleReady() { clearTimeout(quietTimer); quietTimer = window.setTimeout(() => (ready = true), 1000); }
 let typing = false;   // between the B (input start) and C (output start) marks
 let phase: "prompt" | "input" | "output" = "output";
 
@@ -256,7 +269,7 @@ function inkify(chunk: string): string {
   return s.split(/(\x1b\]133;[ABCD](?:;[^\x07\x1b]*)?(?:\x07|\x1b\\))/).map((part, i) => {
     if (i % 2) {
       const m = part[6];
-      if (m === "A") ready = true;
+      if (m === "A") { ready = true; mark("prompt"); reportPerf(); }
       typing = m === "B";
       if (m !== "D") phase = m === "A" ? "prompt" : m === "B" ? "input" : "output";
       if (m === "C") resetOutputState();
