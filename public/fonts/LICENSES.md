@@ -15,6 +15,5 @@ Texts were fetched from each project's upstream repository.
 ## Derived data
 
 `public/pen-*.json` hold handwriting strokes computed from these fonts' glyph outlines by `tools/pen_strokes.py`
-(centre lines of each glyph). They are derived data of the fonts and are covered by the same OFL terms
-(each file's source font is named in the README). The Monaspace name is a Reserved Font Name: the woff2 files are
-unmodified upstream builds.
+(centre lines of each glyph). Treat them as derived data of the fonts under the same OFL terms; `tools/pen_strokes.py <ttf> <out>`
+names the source font of each file (see the README).
