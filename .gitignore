@@ -4,3 +4,7 @@ src-tauri/target
 src-tauri/gen
 .DS_Store
 .claude/
+PLAN.md
+HANDOFF.md
+CLAUDE.md
+tools/tabs-concepts/
