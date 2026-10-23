@@ -135,6 +135,20 @@ fn save_prefs(app: tauri::AppHandle, json: String) -> Result<(), String> {
     std::fs::write(dir.join("prefs.json"), json).map_err(|e| e.to_string())
 }
 
+/// Dock icon from the PNG embedded in the binary. A bare `target/debug` binary has no .app bundle,
+/// so without this it shows the generic exec icon; in a bundle it just matches the bundle icon.
+#[cfg(target_os = "macos")]
+fn set_dock_icon(app: &tauri::AppHandle) {
+    let _ = app.run_on_main_thread(|| {
+        use objc2::{AllocAnyThread, MainThreadMarker};
+        use objc2_app_kit::{NSApplication, NSImage};
+        let Some(mtm) = MainThreadMarker::new() else { return };
+        let data = objc2_foundation::NSData::with_bytes(include_bytes!("../icons/icon.png"));
+        let Some(img) = NSImage::initWithData(NSImage::alloc(), &data) else { return };
+        unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&img)) };
+    });
+}
+
 /// Startup timings from the frontend, appended to startup.log only when TERMPAPER_PERF is set.
 /// Adds the process uptime so the page's own clock can be placed on the process timeline.
 #[tauri::command]
@@ -159,6 +173,8 @@ pub fn run() {
         .setup(|app| {
             // Default menu gives Cmd+C/V/X/A and Quit on macOS.
             app.set_menu(tauri::menu::Menu::default(app.handle())?)?;
+            #[cfg(target_os = "macos")]
+            set_dock_icon(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![spawn, write, resize, traffic_lights, load_prefs, save_prefs, perf_log])
