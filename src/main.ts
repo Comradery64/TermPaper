@@ -21,6 +21,9 @@ const FONTS = [
   { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
   { key: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
   { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
+  { key: "illinois", family: "Illinois Mono", label: "Illinois Mono", pen: "/pen-illinois.json" },
+  { key: "opendyslexic", family: "OpenDyslexic Mono", label: "OpenDyslexic Mono", pen: "/pen-opendyslexic.json" },
+  { key: "comic", family: "Comic Mono", label: "Comic Mono", pen: "/pen-comic.json" },
 ];
 const DEFAULT_SIZE = 17;
 const wanted = new URLSearchParams(location.search).get("font") ?? prefs.font;

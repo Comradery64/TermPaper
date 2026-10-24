@@ -27,6 +27,14 @@
 @font-face { font-family: "Maple Mono"; src: url("/fonts/MapleMono-BoldItalic.woff2") format("woff2"); font-weight: 700; font-style: italic; }
 @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-Italic.woff2") format("woff2"); font-weight: 400; font-style: normal; }
 @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-BoldItalic.woff2") format("woff2"); font-weight: 700; font-style: normal; }
+/* Illinois Mono (OFL); OpenDyslexic Mono and Comic Mono have no italic, OpenDyslexic no bold: synthesized (public/fonts/LICENSES.md) */
+@font-face { font-family: "Illinois Mono"; src: url("/fonts/IllinoisMono-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "Illinois Mono"; src: url("/fonts/IllinoisMono-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+@font-face { font-family: "Illinois Mono"; src: url("/fonts/IllinoisMono-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; }
+@font-face { font-family: "Illinois Mono"; src: url("/fonts/IllinoisMono-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; }
+@font-face { font-family: "OpenDyslexic Mono"; src: url("/fonts/OpenDyslexicMono-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "Comic Mono"; src: url("/fonts/ComicMono.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "Comic Mono"; src: url("/fonts/ComicMono-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; }
 
 
 :root {
