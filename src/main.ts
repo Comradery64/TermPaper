@@ -123,6 +123,7 @@ async function main() {
   mark("spawnCall");
   const integrated = await invoke<boolean>("spawn", { cols: term.cols, rows: term.rows, onData });
   mark("spawned");
+  setTimeout(() => (ready = true), 10_000);   // hard cap: a shell that never sends the mark must still take input
 
   // Input is dropped (not queued) until the shell has drawn its first prompt (OSC 133;A). A shell
   // without the integration never sends one: treat it as ready once its output goes quiet.
