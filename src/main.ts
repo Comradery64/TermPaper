@@ -15,19 +15,19 @@ import { overlayScrollbar } from "./scrollbar";
 const USE_WEBGL = false;
 
 // font choice: settings card (Cmd/Ctrl+,) or Cmd/Ctrl+Shift+F to cycle; ?font=<key> overrides
-const FONTS = [
-  { key: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
-  { key: "victor-cursive", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
-  { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
+const FONTS = [   // alphabetical, as the settings list shows them
+  { key: "comic", family: "Comic Mono", label: "Comic Mono", pen: "/pen-comic.json" },
+  { key: "illinois", family: "Illinois Mono", label: "Illinois Mono", pen: "/pen-illinois.json" },
   { key: "maple", family: "Maple Mono", label: "Maple Mono", pen: "/pen-maple.json" },
   { key: "maple-cursive", family: "Maple Mono Cursive", label: "Maple Mono · cursive", pen: "/pen-maple-cursive.json" },
-  { key: "illinois", family: "Illinois Mono", label: "Illinois Mono", pen: "/pen-illinois.json" },
+  { key: "radon", family: "Monaspace Radon", label: "Monaspace Radon", pen: "/pen-strokes.json" },
   { key: "opendyslexic", family: "OpenDyslexic Mono", label: "OpenDyslexic Mono", pen: "/pen-opendyslexic.json" },
-  { key: "comic", family: "Comic Mono", label: "Comic Mono", pen: "/pen-comic.json" },
+  { key: "victor", family: "Victor Mono", label: "Victor Mono", pen: "/pen-victor.json" },
+  { key: "victor-cursive", family: "Victor Mono Cursive", label: "Victor Mono · cursive", pen: "/pen-victor-cursive.json" },
 ];
 const DEFAULT_SIZE = 17;
 const wanted = new URLSearchParams(location.search).get("font") ?? prefs.font;
-let font = FONTS.find((f) => f.key === wanted) ?? FONTS[0];
+let font = FONTS.find((f) => f.key === wanted) ?? FONTS.find((f) => f.key === "radon")!;
 
 /**
  * Load every weight/style of the font up front. A face that loads on first use leaves its

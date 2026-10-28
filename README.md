@@ -26,7 +26,7 @@ Debug: `http://localhost:1430/?pen=slow` plays the handwriting at 1/20 speed.
 |---|---|
 | Cmd/Ctrl + = / − / 0 | Font size up / down / reset (ruling re-locks) |
 | Cmd/Ctrl + , | Settings: font, handwriting on/off, size, line numbers (every row / each command / off), syntax highlighting (output on, typed commands off by default), ink theme presets with per-color pickers. Saved to `prefs.json` in the app config dir |
-| Cmd/Ctrl + Shift + F | Cycle font: Radon → Victor Mono → Victor Cursive → Maple Mono → Maple Cursive → Illinois → OpenDyslexic → Comic Mono (remembered; `?font=maple-cursive` in demo) |
+| Cmd/Ctrl + Shift + F | Cycle font, in the settings list's alphabetical order: Comic Mono → Illinois → Maple Mono → Maple Cursive → Radon → OpenDyslexic → Victor Mono → Victor Cursive (remembered; `?font=maple-cursive` in demo) |
 | Cmd+C / Cmd+V / Cmd+A | Copy / paste / select all (macOS Edit menu) |
 
 ## Shell integration
