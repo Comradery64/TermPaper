@@ -137,12 +137,27 @@ const WORD_GAP_MS = 1200;   // a longer pause between letters ends the word
 const JOINS = /[A-Za-z]/;
 // k0: viewport row the group was drawn at; ends: col → where that letter's last stroke ended (x, y − baseline)
 type Joins = { g: SVGGElement; marker: IMarker; k0: number; ends: Map<number, [number, number, string]> };
-let word: (Joins & { row: number; col: number; end: [number, number]; prev: string; until: number; timer?: number }) | null = null;
+// marks: dots and crosses of the word's letters, written once the word is done (as taught)
+type Marks = { strokes: [number, number][][]; root: SVGSVGElement; ink: string; nib: number; hurry: number; fs: number };
+let word: (Joins & { row: number; col: number; end: [number, number]; prev: string; until: number; timer?: number; marks?: Marks }) | null = null;
 const kept: Joins[] = [];
 
-function endWord() {
+function endWord(delay = 0, play = true) {
   if (!word) return;
   clearTimeout(word.timer);
+  const m = word.marks;
+  if (play && m) {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    m.root.appendChild(g);
+    let t = delay, last: Animation | null = null;
+    for (const pts of m.strokes) {
+      const len = pts.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) : 0), 0);
+      const ms = Math.min(MAX_MS, Math.max(MIN_MS, (len / m.fs / SPEED_EM_PER_S) * 1000)) / m.hurry;
+      last = strokePath(g, pts.map((p, k) => `${k ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(""), m.ink, m.nib, ms, t);
+      t += ms + LIFT_MS / m.hurry;
+    }
+    if (last) last.onfinish = () => g.remove();
+  }
   kept.push(word);
   word = null;
 }
@@ -187,7 +202,7 @@ function drop(j: Joins) {
 }
 /** Font or size changed: the joins no longer fit the letters. */
 export function clearJoins() {
-  endWord();
+  endWord(0, false);
   for (const j of [...kept]) drop(j);
 }
 
@@ -247,13 +262,13 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
   const nib = data.w * fs;
   for (const [i, ch] of [...text].entries()) {
     const strokes = data.glyphs[ch];
-    if (!strokes) { endWord(); continue; }
+    if (!strokes) { endWord(t); continue; }
     const col = buf.cursorX + i;
     const x0 = col * advance(term, dims.width);
     const toPx = (st: [number, number][]) => st.map(([x, y]) => [x0 + x * fs, baseline + y * fs]);
     const joins = cursive && JOINS.test(ch);
     const intoCapital = /[A-Z]/.test(ch);   // a capital starts with its own entry stroke
-    if (!joins || intoCapital || !word || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
+    if (!joins || intoCapital || !word || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord(t);
 
     const lineAbs = buf.baseY + buf.cursorY;
     dropJoinsAt(lineAbs, col);   // retyping a cell: its old join goes
@@ -289,7 +304,12 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     let last: Animation | null = null;
     let end: [number, number] = [x0, baseline];
     const a = anchors(data, ch);
-    const order = cursive && a ? [...a.body, ...a.marks] : strokes;   // dots and crosses after the body
+    // cursive: dots and crosses wait until the word is finished
+    const defer = cursive && joins && word && a?.marks.length;
+    if (defer) {
+      (word!.marks ??= { strokes: [], root, ink, nib, hurry, fs }).strokes.push(...a!.marks.map(toPx) as [number, number][][]);
+    }
+    const order = cursive && a ? (defer ? a.body : [...a.body, ...a.marks]) : strokes;
     for (const [k, st] of order.entries()) {
       const pts = toPx(st);
       const len = pts.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) : 0), 0);
@@ -304,7 +324,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
       end = toPx([anchors(data, ch)!.exit])[0] as [number, number];   // joins leave from the letter's exit
       word.col = col + 1; word.end = end; word.prev = ch; word.ends.set(col, [end[0], end[1] - baseline, ch]); word.until = now + t + WORD_GAP_MS;
       clearTimeout(word.timer);
-      word.timer = window.setTimeout(endWord, t + WORD_GAP_MS);
+      word.timer = window.setTimeout(() => endWord(), t + WORD_GAP_MS);
     }
   }
   return Math.round(t);
