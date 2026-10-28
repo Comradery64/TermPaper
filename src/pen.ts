@@ -251,9 +251,12 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
   const fs = term.options.fontSize ?? 15;
   const buf = term.buffer.active;
   const rowTop = buf.cursorY * dims.height;
-  // baseline: DOM renderer centers the font's content box in the cell
-  const metrics = fontMetrics(fs);
-  const baseline = rowTop + (dims.height - (metrics.asc - metrics.desc)) / 2 + metrics.asc;
+  // baseline: the browser rounds the font's ascent and descent to whole px, centers that content
+  // box in the cell and snaps the baseline down to a device pixel (measured: this matches the
+  // DOM text exactly; the unrounded centering put the pen up to 0.8px low)
+  const metrics = fontMetrics(fs), dpr = window.devicePixelRatio || 1;
+  const asc = Math.round(metrics.asc), desc = Math.round(-metrics.desc);
+  const baseline = rowTop + Math.floor(((dims.height - (asc + desc)) / 2 + asc) * dpr) / dpr;
   // write faster when keystrokes are piling up
   const hurry = (1 + Math.min(3, backlog * 0.5)) / SLOW;
 
