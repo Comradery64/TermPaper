@@ -295,7 +295,10 @@ function inkify(chunk: string): string {
       if (m === "C") resetOutputState();
       return part + (m === "B" ? INK_SGR : m === "A" || m === "C" ? RESET_SGR : "");
     }
-    const t = part.replace(/\x1b\[([0-9;:]*)m/g, remapSgr);
+    // a color painting block elements (a logo like Claude Code's) is paint, not text: unclamped, so it
+    // matches the background-filled cells beside it. Shades (░▒▓) draw meters and stay ink
+    const t = part.replace(/\x1b\[([0-9;:]*)m/g, (seq, params: string, at: number, all: string) =>
+      /^[\u2580-\u2590\u2594-\u259f]/.test(all.slice(at + seq.length)) ? seq : remapSgr(seq, params));
     return phase === "output" && prefs.hlOutput ? highlightOutput(t, term) : t;
   }).join("");
 }

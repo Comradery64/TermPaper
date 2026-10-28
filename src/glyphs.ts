@@ -44,7 +44,7 @@ const DRAWN = /[─-▟]/;
 /** CSS background layers for one character, or null if we leave it to the font. */
 function paint(ch: string): string | null {
   const fill = (r: Rect, a = 1) => {
-    const c = a === 1 ? "currentColor" : `color-mix(in srgb, currentColor ${a * 100}%, transparent)`;
+    const c = a === 1 ? "currentColor" : `color-mix(in srgb, currentColor ${a * 100}%, var(--paper))`;
     return `linear-gradient(${c},${c}) ${r[0] * 100}% ${r[1] * 100}% / ${r[2] * 100}% ${r[3] * 100}% no-repeat`;
   };
   if (BLOCKS[ch]) return BLOCKS[ch].map((r) => fill(fixPos(r))).join(",");
@@ -76,6 +76,7 @@ function redraw(row: HTMLElement) {
     const text = node.textContent ?? "";
     if (!DRAWN.test(text)) continue;
     const span = node.nodeType === Node.TEXT_NODE ? null : (node as HTMLElement);
+    const cellBg = span?.style.backgroundColor ?? "";   // the shapes sit on the cell's own background
     const frag = document.createDocumentFragment();
     let run = "";
     const flush = () => {
@@ -89,7 +90,7 @@ function redraw(row: HTMLElement) {
       flush();
       const s = span ? (span.cloneNode(false) as HTMLElement) : document.createElement("span");
       s.classList.add("glyph");
-      s.style.background = bg;
+      s.style.background = cellBg ? `${bg}, ${cellBg}` : bg;
       frag.append(s);
     }
     flush();
