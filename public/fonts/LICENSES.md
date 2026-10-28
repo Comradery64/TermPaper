@@ -4,6 +4,9 @@ TermPaper's code is MIT (see `/LICENSE`). The fonts below are third-party and ke
 listed below (full texts alongside this file). Copies of the same files also live in
 `Monaspace Radon/` and `fonts-src/`.
 
+The Monaspace files are unmodified copies from GitHub's official v1.400 webfont release
+(`monaspace-webfont-static-v1.400.zip`), so they keep the Reserved Font Name.
+
 | Family | Copyright | License |
 |---|---|---|
 | Monaspace Radon | Copyright (c) 2023, GitHub https://github.com/githubnext/monaspace, with Reserved Font Name "Monaspace" | OFL 1.1, `OFL-Monaspace.txt` |

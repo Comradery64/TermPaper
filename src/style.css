@@ -1,17 +1,22 @@
+/* line metrics pinned to the earlier fontsource cut, so rows keep their height on the ruled lines
+   (v1.400 grew ascent and cut line gap); the font files themselves are unmodified */
 @font-face {
   font-family: "Monaspace Radon";
-  src: url("/fonts/monaspace-radon-latin-400-normal.woff2") format("woff2");
+  ascent-override: 78.25%; descent-override: 21.75%; line-gap-override: 20%;
+  src: url("/fonts/MonaspaceRadon-Regular.woff2") format("woff2");
   font-weight: 400;
 }
 @font-face {
   font-family: "Monaspace Radon";
-  src: url("/fonts/monaspace-radon-latin-400-italic.woff2") format("woff2");
+  ascent-override: 78.25%; descent-override: 21.75%; line-gap-override: 20%;
+  src: url("/fonts/MonaspaceRadon-Italic.woff2") format("woff2");
   font-weight: 400;
   font-style: italic;
 }
 @font-face {
   font-family: "Monaspace Radon";
-  src: url("/fonts/monaspace-radon-latin-700-normal.woff2") format("woff2");
+  ascent-override: 78.25%; descent-override: 21.75%; line-gap-override: 20%;
+  src: url("/fonts/MonaspaceRadon-Bold.woff2") format("woff2");
   font-weight: 700;
 }
 /* Victor/Maple; the "Cursive" families use the cursive italic cut for upright text */
