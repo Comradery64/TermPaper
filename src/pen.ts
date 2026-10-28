@@ -231,9 +231,9 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
         const mx = ex + gap * 0.5;
         d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.2)} ${f(ey)} ${f(mx - gap * 0.2)} ${f(baseline)} ${f(mx)} ${f(baseline)}`
           + `C${f(mx + gap * 0.2)} ${f(baseline)} ${f(sx - gap * 0.15)} ${f(sy)} ${f(sx)} ${f(sy)}`;
-      } else if ("acdgoqs".includes(ch)) {
-        // into a round letter: rise early and come over the top of the bowl from the left,
-        // instead of cutting through its side
+      } else if ("acdgoqs".includes(ch) && sy < baseline - 0.8 * xh) {
+        // into a round letter entered at the top: rise early and come over the top of the bowl
+        // from the left, instead of cutting through its side (a cursive s entered low is not)
         d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.25)} ${f(ey + 0.04 * fs)} ${f(sx - 0.45 * fs)} ${f(sy)} ${f(sx)} ${f(sy)}`;
       } else {
         // a garland: a soft dip just under the lower of the two ends

@@ -305,9 +305,14 @@ HAND = {
     "9": [[(.9, .35), (.5, .6), (.05, .3), (.5, 0), (.95, .3), (.6, 1)]],
 }
 # a cursive l with a loop (ℓ): up the front of the loop, over the top, down the back, then the tail;
-# a looped k: down the stem, back up, round the loop, then the leg
+# a looped k: down the stem, back up, round the loop, then the leg;
+# a cursive s (Victor italic): lead-in from the left up to the looped peak, down the back,
+# round the bowl, then back along the bottom and out to the right
 HAND_LOOPED = {"l": [[(.3, .72), (.9, .22), (.6, 0), (.22, .3), (.3, .72), (.2, .95), (.95, 1)]],
-               "k": [[(.15, 0), (0, 1), (.05, .62), (.45, .35), (.85, .45), (.35, .62), (.95, 1)]]}
+               "k": [[(.15, 0), (0, 1), (.05, .62), (.45, .35), (.85, .45), (.35, .62), (.95, 1)]],
+               "s": [[(.1, .47), (.66, .28), (.53, .05), (.58, 0), (.75, .09), (.66, .28), (.81, .49),
+                      (.7, .83), (.34, 1), (0, .87), (.69, .92), (1, .84)]]}
+looped = set()   # letters drawn from HAND_LOOPED: a cursive form, entered and left where its stroke starts and ends
 MARK_COUNT = {"i": 1, "j": 1, "t": 1, "f": 1}   # trailing strokes that are dots/crosses, not body
 
 def hand_strokes(ch):
@@ -334,7 +339,8 @@ def hand_strokes(ch):
         return path[::-1]
     holes = ndimage.label(~raster(ch))[1] - 1   # enclosed counters: a looped letterform
     paths = []
-    for spec in (HAND_LOOPED[ch] if ch in HAND_LOOPED and holes else HAND[ch]):
+    if ch in HAND_LOOPED and holes: looped.add(ch)
+    for spec in (HAND_LOOPED[ch] if ch in looped else HAND[ch]):
         pts = [snap(x, y) for x, y in spec]
         cur = [pts[0]]
         for a, b in zip(pts, pts[1:]):
@@ -416,7 +422,8 @@ for ch in ENTRY:
     if ch in out and out[ch]:
         body = out[ch][:body_count.get(ch, len(out[ch]))]
         snap_to = lambda hint: [round(v, 4) for v in nearest_on(body, hint_point(body, hint))[2]]
-        join_at[ch] = [snap_to(ENTRY[ch]), snap_to(EXIT.get(ch, (1, "base")))]
+        join_at[ch] = ([body[0][0], body[-1][-1]] if ch in looped else
+                       [snap_to(ENTRY[ch]), snap_to(EXIT.get(ch, (1, "base")))])
 
 tt = TTFont(FONT); upm = tt["head"].unitsPerEm
 asc, desc = tt["hhea"].ascent / upm, tt["hhea"].descent / upm
