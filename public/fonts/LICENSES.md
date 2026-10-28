@@ -2,7 +2,7 @@
 
 TermPaper's code is MIT (see `/LICENSE`). The fonts below are third-party and keep their own license,
 listed below (full texts alongside this file). Copies of the same files also live in
-`Monaspace Radon/` and `fonts-src/`.
+`fonts-src/` (Monaspace Radon as the official v1.400 OTF, for tools/pen_strokes.py).
 
 The Monaspace files are unmodified copies from GitHub's official v1.400 webfont release
 (`monaspace-webfont-static-v1.400.zip`), so they keep the Reserved Font Name.

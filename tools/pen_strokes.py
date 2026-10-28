@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 from skimage.morphology import skeletonize
 
-FONT, OUT = sys.argv[1:3] if len(sys.argv) > 2 else ("Monaspace Radon/monaspace-radon-latin-400-normal.ttf", "pen-strokes.json")
+FONT, OUT = sys.argv[1:3] if len(sys.argv) > 2 else ("fonts-src/MonaspaceRadon-Regular.otf", "pen-strokes.json")
 S = 200          # px per em for rasterizing
 PAD = 60
 font = ImageFont.truetype(FONT, S)
