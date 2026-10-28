@@ -246,7 +246,11 @@ let pending = 0;   // writes waiting in the queue
 let lastFast: Promise<void> = Promise.resolve();   // settles when xterm has parsed the latest fast-path write
 function enqueue(s: string) {
   if (!s) return;
-  const pen = prefs.handwriting && typing && /^[\x21-\x7e]{1,4}$/.test(s);
+  // zsh echoes the 2nd letter of a command as backspace + the word so far ("\bth"); once
+  // the earlier writes land, repainting letters already on the page is a no-op, so the pen
+  // writes only the new ones
+  const redraw = prefs.handwriting && typing ? /^(\x08+)([\x21-\x7e]{2,8})$/.exec(s) : null;
+  const pen = redraw || (prefs.handwriting && typing && /^[\x21-\x7e]{1,4}$/.test(s));
   // xterm keeps writes in order itself; only a pen stroke has to wait (for the cursor to settle)
   const write = () => { lastFast = new Promise((r) => term.write(s, r)); };
   if (!pen && pending === 0) return write();
@@ -254,8 +258,15 @@ function enqueue(s: string) {
   queue = queue.then(async () => {
     if (pen) {
       await lastFast;   // xterm has parsed everything before this, so the cursor is current
+      let text = s;
+      if (redraw) {
+        const k = redraw[1].length, buf = term.buffer.active;
+        const left = buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true, buf.cursorX - k, buf.cursorX);
+        text = left === redraw[2].slice(0, k) && redraw[2].length - k <= 4 ? redraw[2].slice(k) : "";
+        if (text) s = text;
+      }
       let hold = 0;
-      try { hold = penWrite(term, s, prefs.colors.ink, pending - 1, font.key.endsWith("cursive")); } catch (e) { console.error("pen", e); }
+      if (text) try { hold = penWrite(term, text, prefs.colors.ink, pending - 1, font.key.endsWith("cursive")); } catch (e) { console.error("pen", e); }
       if (hold) await new Promise((r) => setTimeout(r, hold));
     }
     write();
