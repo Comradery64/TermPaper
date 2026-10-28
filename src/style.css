@@ -42,7 +42,7 @@
   --rule-color: #9fcbea;
   --margin: #b57ab2;
   --hole: #a9d4f1;
-  --gutter: 84px;
+  --gutter: 73.5px;   /* margin line at 59.5px */
 }
 
 html, body { margin: 0; height: 100%; background: #1c1c1c; overflow: hidden; }
