@@ -355,7 +355,8 @@ def hand_strokes(ch):
             for dr in range(-4, 5):
                 for dc in range(-4, 5): covered.add((r + dr, c + dc))
     left = [sg for sg in segments(sk) if sum(p in covered for p in sg) < 0.5 * len(sg)]
-    extra = [st for st in chain(left) if len(st) > 6]
+    # Q's tail loop and j's curl cross themselves: the leftover bit of the loop is not a stroke
+    extra = [st for st in chain(left) if len(st) > 6] if ch not in "Qj" else []
     marks = MARK_COUNT.get(ch, 0)
     body, tail = paths[:len(paths) - marks] if marks else paths, paths[len(paths) - marks:] if marks else []
     em = lambda st: [[round((c - PAD) / S, 4), round((r - PAD - S) / S, 4)] for r, c in simplify([(int(r), int(c)) for r, c in st])]
