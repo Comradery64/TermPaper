@@ -4,7 +4,7 @@
 
 ![Claude Code in TermPaper: the pen writes its resignation letter after the 40th rm -rf node_modules](docs/claude-code.png)
 
-A cross-platform terminal that looks like a sheet of ruled notebook paper. Monaspace Radon handwriting font (Victor Mono, Maple Mono, both also cursive, Illinois Mono, OpenDyslexic Mono and Comic Mono are in settings),
+A terminal that looks like a sheet of ruled notebook paper. Monaspace Radon handwriting font (Victor Mono, Maple Mono, both also cursive, Illinois Mono, OpenDyslexic Mono and Comic Mono are in settings),
 fountain-pen-blue ink for what you type, charcoal for what the machine says, and an invisible pen that writes
 each letter (Handwriting in settings turns it off).
 
