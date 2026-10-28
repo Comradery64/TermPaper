@@ -392,9 +392,9 @@ ENTRY = {  # where the pen comes in
     "u": (0, "mid"), "v": (0, "mid"), "w": (0, "mid"), "x": (0, "mid"), "y": (0, "mid"), "z": (0, "mid"),
 }
 EXIT = {   # where the pen leaves
-    "b": (1, "mid"), "o": (1, "mid"), "v": (1, "mid"), "w": (1, "mid"), "r": (1, "mid"),
-    "g": (.2, "desc"), "j": (.2, "desc"), "y": (.2, "desc"), "q": (1, "desc"), "f": (.5, "base"),
-    "s": (.85, "base"), "p": (.6, "base"),
+    "o": (1, "mid"), "v": (1, "mid"), "w": (1, "mid"), "r": (1, "mid"),
+    "g": (.2, "desc"), "j": (.2, "desc"), "y": (.2, "desc"), "q": (1, "desc"),
+    "s": (.85, "base"), "p": (.6, "base"), "b": (.6, "base"),   # b leaves from the bottom of its bowl, like p (Penpals)
 }
 
 def hint_point(glyph, hint):
@@ -424,6 +424,7 @@ for ch in ENTRY:
         snap_to = lambda hint: [round(v, 4) for v in nearest_on(body, hint_point(body, hint))[2]]
         join_at[ch] = ([body[0][0], body[-1][-1]] if ch in looped else
                        [snap_to(ENTRY[ch]), snap_to(EXIT.get(ch, (1, "base")))])
+        if ch == "f": join_at[ch][1] = out[ch][-1][-1]   # f joins on from the end of its crossbar (Penpals)
 
 tt = TTFont(FONT); upm = tt["head"].unitsPerEm
 asc, desc = tt["hhea"].ascent / upm, tt["hhea"].descent / upm

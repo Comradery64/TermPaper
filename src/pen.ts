@@ -9,7 +9,7 @@ import type { IMarker, Terminal } from "@xterm/xterm";
 import { PAIR_JOINS } from "./joins";
 
 type Stroke = [number, number][];
-let data: { w: number; asc: number; desc: number; body?: Record<string, number>; join?: Record<string, [P, P]>; glyphs: Record<string, Stroke[]> } | null = null;
+let data: PenData | null = null;
 let svg: SVGSVGElement | null = null;
 
 const SPEED_EM_PER_S = 9;   // pen travel speed; ~120 ms for a typical lowercase
@@ -19,31 +19,82 @@ const LIFT_MS = 18;         // pause when the pen lifts between strokes
 const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1;
 
 /**
- * Cursive joining rules (school cursive: exit stroke of one letter → entry point of the next).
- * Each lowercase letter's entry and exit are fixed in the strokes file (tools/pen_strokes.py:
- * per-letter hints snapped onto the letter), and its strokes start at the entry. The join's
- * shape then depends on the two letters:
- *  - b o v w r end high, on the midline: into a letter entered near the midline they bridge
- *    across level; into one entered low the join dips to the baseline first ("tow-truck");
- *    g j p q y climb back from the descender.
- *  - Tall letters are entered at the top of the ascender: the join is an upstroke loop.
- *  - Round letters (a c d g o q) and s are entered at the top, approached over it from the left.
- *  - Otherwise a garland: a soft dip under the lower of the two ends.
- *  - The dot of i/j and the cross of t/f are written after the body, never joined.
- *  - No join into a capital, none between words, and digits don't join.
- *  - x and z are break letters (Oak National Academy): joined to from the letter before,
- *    never joined on to the next.
- * Pairs listed in joins.ts use their hand-drawn join instead (sourced rules there).
- * Points are em, y down from the baseline.
+ * Cursive joining (exit stroke of one letter → entry point of the next), modelled on joined
+ * script such as Dancing Script and the four joins of school handwriting. Each lowercase
+ * letter's entry and exit are fixed in the strokes file (tools/pen_strokes.py), and its strokes
+ * start at the entry. The join leaves the exit by kind:
+ *  - on the baseline (a c d e h i k l m n s t u x z): an upstroke;
+ *  - high, on the midline (b o r v w): a level bridge;
+ *  - below the line (g j p q y): a loop back up through the baseline first;
+ * and arrives by kind of entry:
+ *  - looped ascenders (b f h k l entered at the top): an upstroke loop right of the stem;
+ *  - round letters (a c d g o q, a print s) and t, entered at the top: onto the letter's own
+ *    first stroke a little below the top, then back along it to the start (over the top of a
+ *    bowl, up a t's stem), so the letter retraces the join instead of being cut through;
+ *  - anything else (i j m n p r u v w y x z e, a cursive s): straight into the entry.
+ * The dot of i/j and the cross of t/f are written after the body, never joined. No join into
+ * a capital, none between words, and digits don't join. Pairs listed in joins.ts use their
+ * hand-drawn join instead. Points are em, y down from the baseline.
  */
 type P = [number, number];
-const ROUTE_LOW = "bovwrgjpqy";   // joins from these run down to the baseline first
-function anchors(ch: string): { entry: P; exit: P; body: P[][]; marks: P[][] } | undefined {
-  const strokes = data?.glyphs[ch];
+export type PenData = { w: number; asc: number; desc: number; body?: Record<string, number>; join?: Record<string, [P, P]>; glyphs: Record<string, Stroke[]> };
+function anchors(d: PenData, ch: string): { entry: P; exit: P; body: P[][]; marks: P[][] } | undefined {
+  const strokes = d.glyphs[ch];
   if (!strokes?.length) return;
-  const n = data!.body?.[ch] ?? strokes.length, j = data!.join?.[ch];
+  const n = d.body?.[ch] ?? strokes.length, j = d.join?.[ch];
   const body = strokes.slice(0, n), marks = strokes.slice(n);
   return { entry: j?.[0] ?? body[0][0], exit: j?.[1] ?? body[body.length - 1].at(-1)!, body, marks };
+}
+
+/**
+ * The join from `prev` into `ch` as SVG path data in em: x from the left of prev's cell (ch's
+ * cell starts `adv` em to the right), y down from the baseline.
+ */
+export function joinPath(d: PenData, prev: string, ch: string, adv: number, hand?: Record<string, string>): string | null {
+  if (hand?.[prev + ch]) return hand[prev + ch];
+  const from = anchors(d, prev), to = anchors(d, ch);
+  if (!from || !to) return null;
+  const f = (n: number) => +n.toFixed(4);
+  const xh = -Math.min(...d.glyphs.x.flat().map((p) => p[1]));   // x-height
+  let [ex, ey] = from.exit;
+  const [sx, sy] = [to.entry[0] + adv, to.entry[1]];
+  let path = `M${f(ex)} ${f(ey)}`;
+  if (ey > 0.15 * xh) {
+    // below the line: back up to the baseline just right of the descender. A tail that ends
+    // left of the stem (g j y) loops up through it; one that ends under the stem (q) hooks right
+    const stem = Math.max(...from.body.flat().filter(([, y]) => Math.abs(y) < 0.06).map(([x]) => x));
+    const bx = stem + 0.07, by = -0.05;
+    path += ex < stem - 0.08
+      ? `C${f(ex - 0.06)} ${f(ey - 0.22)} ${f(bx - 0.16)} ${f(by + 0.05)} ${f(bx)} ${f(by)}`
+      : `C${f(ex + 0.01)} ${f(ey - 0.14)} ${f(bx - 0.04)} ${f(by + 0.03)} ${f(bx)} ${f(by)}`;
+    [ex, ey] = [bx, by];
+  }
+  const high = ey < -0.6 * xh;
+  const gap = sx - ex;
+  // round letters and t: meet the letter's first stroke below its top, then retrace it
+  const retrace = "acdgoqt".includes(ch) || (ch === "s" && sy < -0.8 * xh);
+  if (retrace && sy < -0.8 * xh) {
+    const st = to.body[0].map(([x, y]) => [x + adv, y] as P);
+    const depth = ch === "t" ? -0.85 * xh : sy + 0.09;
+    let k = st.findIndex(([, y]) => y >= depth);
+    if (k < 1) k = Math.min(1, st.length - 1);
+    const [qx, qy] = st[k], [px, py] = st[k - 1];
+    const len = Math.hypot(qx - px, qy - py) || 1, ux = (qx - px) / len, uy = (qy - py) / len;
+    const reach = Math.min(0.12, Math.hypot(qx - ex, qy - ey) * 0.4);
+    const c1 = high ? [ex + 0.3 * (qx - ex), ey + 0.05] : [ex + 0.35 * (qx - ex), ey];
+    path += `C${f(c1[0])} ${f(c1[1])} ${f(qx + ux * reach)} ${f(qy + uy * reach)} ${f(qx)} ${f(qy)}`;
+    path += "L" + st.slice(0, k).reverse().map(([x, y]) => `${f(x)} ${f(y)}`).join(" ");
+  } else if (sy < -1.3 * xh) {
+    // into a looped ascender: an upstroke that swings right of the stem and hooks into its top
+    path += `C${f(ex + gap * 0.55)} ${f(Math.max(ey, -0.1 * xh))} ${f(sx + 0.18)} ${f(sy + 0.45)} ${f(sx)} ${f(sy)}`;
+  } else if (high) {
+    // from the midline: a level bridge, barely sagging, then down or across into the entry
+    path += `C${f(ex + gap * 0.4)} ${f(ey + 0.05)} ${f(sx - gap * 0.35)} ${f(Math.min(sy, ey) + 0.05)} ${f(sx)} ${f(sy)}`;
+  } else {
+    // from the baseline: an upstroke, leaving along the line and rising into the entry
+    path += `C${f(ex + gap * 0.35)} ${f(ey)} ${f(sx - gap * 0.15)} ${f(sy + 0.35 * (ey - sy))} ${f(sx)} ${f(sy)}`;
+  }
+  return path;
 }
 
 let wantUrl = "";
@@ -77,7 +128,6 @@ function overlay(term: Terminal): SVGSVGElement | null {
  */
 const WORD_GAP_MS = 1200;   // a longer pause between letters ends the word
 const JOINS = /[A-Za-z]/;
-const BREAK = "xz";   // break letters: nothing joins on after them
 // k0: viewport row the group was drawn at; ends: col → where that letter's last stroke ended (x, y − baseline)
 type Joins = { g: SVGGElement; marker: IMarker; k0: number; ends: Map<number, [number, number, string]> };
 let word: (Joins & { row: number; col: number; end: [number, number]; prev: string; until: number; timer?: number }) | null = null;
@@ -117,8 +167,7 @@ function dropJoinsAt(line: number, col: number) {
 }
 /** End of a letter already on the page just left of `col`, so a new letter can join on to it. */
 function endBefore(term: Terminal, line: number, col: number, baseline: number): [number, number, string] | null {
-  const c = term.buffer.active.getLine(line)?.getCell(col - 1)?.getChars() ?? "";
-  if (!JOINS.test(c) || BREAK.includes(c)) return null;
+  if (!JOINS.test(term.buffer.active.getLine(line)?.getCell(col - 1)?.getChars() ?? "")) return null;
   for (const j of kept) {
     const e = !j.marker.isDisposed && j.marker.line === line ? j.ends.get(col - 1) : undefined;
     if (e) return [e[0], baseline + e[1], e[2]];
@@ -197,7 +246,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     const toPx = (st: [number, number][]) => st.map(([x, y]) => [x0 + x * fs, baseline + y * fs]);
     const joins = cursive && JOINS.test(ch);
     const intoCapital = /[A-Z]/.test(ch);   // a capital starts with its own entry stroke
-    if (!joins || intoCapital || !word || BREAK.includes(word.prev) || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
+    if (!joins || intoCapital || !word || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
 
     const lineAbs = buf.baseY + buf.cursorY;
     dropJoinsAt(lineAbs, col);   // retyping a cell: its old join goes
@@ -212,50 +261,27 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
       }
     }
     if (joins && word && from) {
-      // connector: from the last letter's exit to this letter's entry
+      // connector: from the last letter's exit to this letter's entry (joinPath, em → px)
       const [ex, ey, prev] = from;
-      const [sx, sy] = toPx([anchors(ch)!.entry])[0];
-      const gap = sx - ex, f = (n: number) => n.toFixed(2);
-      const xh = -Math.min(...data.glyphs.x.flat().map((p) => p[1])) * fs;   // midline height, px
-      let d: string;
-      const hand = pairs?.[prev + ch];
-      if (hand) {
-        // hand-drawn (joins.ts): em from the left of the previous cell and the baseline
-        let k = 0;
-        const ox = x0 - advance(term, dims.width);
-        d = hand.replace(/-?\d*\.?\d+/g, (n) => f(k++ % 2 ? baseline + +n * fs : ox + +n * fs));
-      } else if (sy < baseline - 1.3 * xh) {
-        // into a tall letter: an upstroke that swings right of the stem and hooks into its top
-        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.55)} ${f(Math.max(ey, baseline - 0.1 * xh))} ${f(sx + 0.18 * fs)} ${f(sy + 0.45 * fs)} ${f(sx)} ${f(sy)}`;
-      } else if ("bovwr".includes(prev) && Math.abs(sy - ey) < 0.5 * xh) {
-        // high exit into a letter entered near the midline: a level bridge, barely sagging
-        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.4)} ${f(ey + 0.05 * fs)} ${f(sx - gap * 0.4)} ${f(sy + 0.05 * fs)} ${f(sx)} ${f(sy)}`;
-      } else if (ROUTE_LOW.includes(prev)) {
-        // tow-truck / descender: run to the baseline between the letters, then rise into the entry
-        const mx = ex + gap * 0.5;
-        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.2)} ${f(ey)} ${f(mx - gap * 0.2)} ${f(baseline)} ${f(mx)} ${f(baseline)}`
-          + `C${f(mx + gap * 0.2)} ${f(baseline)} ${f(sx - gap * 0.15)} ${f(sy)} ${f(sx)} ${f(sy)}`;
-      } else if ("acdgoqs".includes(ch) && sy < baseline - 0.8 * xh) {
-        // into a round letter entered at the top: rise early and come over the top of the bowl
-        // from the left, instead of cutting through its side (a cursive s entered low is not)
-        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.25)} ${f(ey + 0.04 * fs)} ${f(sx - 0.45 * fs)} ${f(sy)} ${f(sx)} ${f(sy)}`;
-      } else {
-        // a garland: a soft dip just under the lower of the two ends
-        const low = Math.max(ey, sy) + 0.08 * fs;
-        d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.35)} ${f(low)} ${f(sx - gap * 0.35)} ${f(low)} ${f(sx)} ${f(sy)}`;
+      const [sx, sy] = toPx([anchors(data, ch)!.entry])[0];
+      const ox = x0 - advance(term, dims.width);
+      let k = 0;
+      const d = joinPath(data, prev, ch, advance(term, dims.width) / fs, pairs)
+        ?.replace(/-?\d*\.?\d+/g, (n) => (k++ % 2 ? baseline + +n * fs : ox + +n * fs).toFixed(2));
+      if (d) {
+        const ms = Math.max(MIN_MS / 2, (Math.hypot(sx - ex, sy - ey) / fs / SPEED_EM_PER_S) * 1000) / hurry;
+        strokePath(word.g, d, ink, nib * 0.8, ms, t);
+        // the letter this join leads into, and when it lands on the page
+        Object.assign((word.g.lastElementChild as SVGElement).dataset, { col: String(col), ch, at: String(now + t + 200) });
+        t += ms;   // no lift: the pen flows straight into the letter
       }
-      const ms = Math.max(MIN_MS / 2, (Math.hypot(sx - ex, sy - ey) / fs / SPEED_EM_PER_S) * 1000) / hurry;
-      strokePath(word.g, d, ink, nib * 0.8, ms, t);
-      // the letter this join leads into, and when it lands on the page
-      Object.assign((word.g.lastElementChild as SVGElement).dataset, { col: String(col), ch, at: String(now + t + 200) });
-      t += ms;   // no lift: the pen flows straight into the letter
     }
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     root.appendChild(g);
     let last: Animation | null = null;
     let end: [number, number] = [x0, baseline];
-    const a = anchors(ch);
+    const a = anchors(data, ch);
     const order = cursive && a ? [...a.body, ...a.marks] : strokes;   // dots and crosses after the body
     for (const [k, st] of order.entries()) {
       const pts = toPx(st);
@@ -268,7 +294,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     if (last) last.onfinish = () => g.remove(); else g.remove();
 
     if (joins && word) {
-      end = toPx([anchors(ch)!.exit])[0] as [number, number];   // joins leave from the letter's exit
+      end = toPx([anchors(data, ch)!.exit])[0] as [number, number];   // joins leave from the letter's exit
       word.col = col + 1; word.end = end; word.prev = ch; word.ends.set(col, [end[0], end[1] - baseline, ch]); word.until = now + t + WORD_GAP_MS;
       clearTimeout(word.timer);
       word.timer = window.setTimeout(endWord, t + WORD_GAP_MS);

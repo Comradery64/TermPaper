@@ -1,9 +1,12 @@
 <!doctype html>
-<!-- Join lab: every pair of ?l=<letters> (default stioh, or just ?p=st,oh; ?f=0|1 one font; ?s= px per em) in both cursive fonts, drawn large with the
+<!-- Join lab: every pair of ?l=<letters> (default stioh, or just ?p=st,oh; ?f=0|1 one font; ?s= px per em).
+     ?grid=abc: the pair grid rows "aa ab … az" for those first letters as the page shows them (letters
+     plus joins), each over the same row in Dancing Script, a joined script to compare against. in both cursive fonts, drawn large with the
      font's letters, the pen strokes (green dot: where the letter starts, red: where it ends), the
      guide lines and the join from src/joins.ts. Open http://localhost:1430/tools/joinlab.html (pnpm dev). -->
 <meta charset="utf-8">
 <title>join lab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script&display=block">
 <style>
   @font-face { font-family: "Victor Mono Cursive"; src: url("/fonts/VictorMono-Italic.woff2") format("woff2"); }
   @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-Italic.woff2") format("woff2"); }
@@ -17,12 +20,34 @@
 <div id="out"></div>
 <script type="module">
 import { PAIR_JOINS } from "../src/joins";
+import { joinPath } from "../src/pen";
 const FONTS = [["/pen-victor-cursive.json", "Victor Mono Cursive", 0.5455], ["/pen-maple-cursive.json", "Maple Mono Cursive", 0.6]];
 const q = new URLSearchParams(location.search);
 const letters = q.get("l") ?? "stioh";
 const S = +(q.get("s") ?? 100), W = 2.3 * S, H = 1.1 * S;   // px per em (?s=); figure size in px
 const out = document.getElementById("out");
 await document.fonts.load('10px "Victor Mono Cursive"'); await document.fonts.load('10px "Maple Mono Cursive"');
+if (q.has("grid")) {
+  await document.fonts.load('10px "Dancing Script"');
+  const S = +(q.get("s") ?? 40), AZ = "abcdefghijklmnopqrstuvwxyz";
+  for (const [url, family, adv] of FONTS.filter((_, i) => !q.has("f") || +q.get("f") === i)) {
+    const d = await (await fetch(url)).json();
+    out.insertAdjacentHTML("beforeend", `<h2>${family}</h2>`);
+    for (const a of q.get("grid")) {
+      const pairs = [...AZ].map((b) => a + b), W = (pairs.length * 3) * adv * S;
+      const paths = pairs.map((p, i) => {
+        const j = joinPath(d, p[0], p[1], adv, PAIR_JOINS[url]);
+        return j ? `<path d="${j}" transform="translate(${i * 3 * adv * S} 0) scale(${S})" fill="none" stroke="#1f2a6b" stroke-width="${d.w * 0.8}" stroke-linecap="round"/>` : "";
+      }).join("");
+      const text = pairs.map((p, i) => `<tspan x="${i * 3 * adv * S}" y="0">${p[0]}</tspan><tspan x="${(i * 3 + 1) * adv * S}" y="0">${p[1]}</tspan>`).join("");
+      out.insertAdjacentHTML("beforeend", `<div><svg width="${W}" height="${1.2 * S}" viewBox="0 ${-0.85 * S} ${W} ${1.2 * S}" style="display:block">
+        <text font-family="${family}" font-size="${S}" fill="#1f2a6b">${text}</text>${paths}</svg>
+        <div style="font:${S * 0.8}px 'Dancing Script';color:#777;white-space:pre;margin:-4px 0 6px">${pairs.join(" ")}</div></div>`);
+    }
+  }
+  document.title = "ready";
+  throw "done";   // grid only
+}
 for (const [url, family, adv] of FONTS.filter((_, i) => !q.has("f") || +q.get("f") === i)) {
   const d = await (await fetch(url)).json();
   const top = (ch) => Math.min(...d.glyphs[ch].flat().map((p) => p[1]));
@@ -31,14 +56,15 @@ for (const [url, family, adv] of FONTS.filter((_, i) => !q.has("f") || +q.get("f
   const grid = out.lastElementChild;
   const pairs = q.get("p")?.split(",") ?? [...letters].flatMap((a) => [...letters].map((b) => a + b));   // ?p=st,oh
   for (const [a, b] of pairs) {
-    const pair = a + b, path = PAIR_JOINS[url]?.[pair];
+    const pair = a + b, path = joinPath(d, a, b, adv, PAIR_JOINS[url]);
     const letter = (ch, dx) => {
       const n = d.body?.[ch] ?? d.glyphs[ch].length;
       return d.glyphs[ch].map((st, k) => `<polyline points="${st.map(([x, y]) => `${(x + dx) * S},${y * S}`).join(" ")}" fill="none" stroke="${k < n ? "#9ab" : "#ccc"}" stroke-width="1.5"/>`).join("")
-        + `<circle cx="${(d.glyphs[ch][0][0][0] + dx) * S}" cy="${d.glyphs[ch][0][0][1] * S}" r="${S / 30}" fill="#16a34a"/>`
-        + `<circle cx="${(d.glyphs[ch][n - 1].at(-1)[0] + dx) * S}" cy="${d.glyphs[ch][n - 1].at(-1)[1] * S}" r="${S / 30}" fill="#dc2626"/>`;
+        // green: where joins arrive, red: where they leave (the strokes file's join points)
+        + (d.join?.[ch] ?? [d.glyphs[ch][0][0], d.glyphs[ch][n - 1].at(-1)]).map(([x, y], k) =>
+          `<circle cx="${(x + dx) * S}" cy="${y * S}" r="${S / 30}" fill="${k ? "#dc2626" : "#16a34a"}"/>`).join("");
     };
-    grid.insertAdjacentHTML("beforeend", `<figure><figcaption class="${path ? "" : "missing"}">${pair}${path ? "" : " (no join)"}</figcaption>
+    grid.insertAdjacentHTML("beforeend", `<figure><figcaption class="${path ? "" : "missing"}">${pair}${path ? "" : "(no join)"}</figcaption>
       <svg width="${W}" height="${H}" viewBox="${-0.1 * S} ${-0.9 * S} ${W} ${H}">
         ${lines.map(([y, c]) => `<line x1="${-0.1 * S}" x2="${W}" y1="${y * S}" y2="${y * S}" stroke="${c}" stroke-dasharray="3 3"/>`).join("")}
         <text font-family="${family}" font-size="${S}" fill="#1f2a6b" opacity=".25"><tspan x="0" y="0">${a}</tspan><tspan x="${adv * S}" y="0">${b}</tspan></text>
