@@ -1,12 +1,12 @@
 /**
  * Settings card (Cmd/Ctrl+,). Edits `prefs` in place, saves, and tells main.ts what changed.
  */
-import { PRESETS, ROLES, prefs, savePrefs, type LineNumbers, type PanelSide } from "./prefs";
+import { PRESETS, ROLES, prefs, savePrefs, type CursorShape, type LineNumbers, type PanelSide } from "./prefs";
 import { pageTurn } from "./pageturn";
 import { overlayScrollbar } from "./scrollbar";
 
 export interface FontChoice { key: string; family: string; label: string }
-export type Changed = "font" | "fontSize" | "lineNumbers" | "highlight" | "colors";
+export type Changed = "font" | "fontSize" | "lineNumbers" | "highlight" | "colors" | "cursor";
 
 export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => void, onClose: () => void) {
   if (document.getElementById("settings")) return;
@@ -21,6 +21,10 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
       <h3>Font</h3>
       <div class="fonts"></div>
       <label class="check"><input type="checkbox" data-k="handwriting"> Handwriting <small>(the pen writes each letter you type)</small></label>
+      <h3>Cursor</h3>
+      <div class="seg cursor">
+        <button data-v="bar">Bar</button><button data-v="block">Block</button>
+      </div>
       <h3>Size</h3>
       <div class="size"><button data-d="-1">−</button><span></span><button data-d="1">+</button></div>
       <h3>Line numbers</h3>
@@ -57,6 +61,9 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
   back.querySelectorAll<HTMLButtonElement>(".lines button").forEach((b) => {
     b.onclick = () => { prefs.lineNumbers = b.dataset.v as LineNumbers; changed("lineNumbers"); };
   });
+  back.querySelectorAll<HTMLButtonElement>(".cursor button").forEach((b) => {
+    b.onclick = () => { prefs.cursor = b.dataset.v as CursorShape; changed("cursor"); };
+  });
   back.querySelectorAll<HTMLButtonElement>(".side button").forEach((b) => {
     b.onclick = () => { prefs.panelSide = b.dataset.v as PanelSide; savePrefs(); render(); };   // applies next open
   });
@@ -82,6 +89,7 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
     back.querySelectorAll<HTMLButtonElement>(".fonts button").forEach((b) => b.classList.toggle("on", b.dataset.key === prefs.font));
     $(".size span").textContent = `${prefs.fontSize}px`;
     back.querySelectorAll<HTMLButtonElement>(".lines button").forEach((b) => b.classList.toggle("on", b.dataset.v === prefs.lineNumbers));
+    back.querySelectorAll<HTMLButtonElement>(".cursor button").forEach((b) => b.classList.toggle("on", b.dataset.v === prefs.cursor));
     back.querySelectorAll<HTMLButtonElement>(".side button").forEach((b) => b.classList.toggle("on", b.dataset.v === prefs.panelSide));
     back.querySelectorAll<HTMLInputElement>(".check input").forEach((c) => (c.checked = (prefs as any)[c.dataset.k!]));
     // a preset stays lit only while its colors are unedited

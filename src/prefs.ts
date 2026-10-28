@@ -41,6 +41,7 @@ export const PRESETS: Record<string, { label: string; colors: Colors }> = {
 
 export type LineNumbers = "rows" | "commands" | "off";
 export type PanelSide = "right" | "left" | "bottom";
+export type CursorShape = "bar" | "block";
 export const prefs = {
   font: "radon",           // defaults are the owner's tuned setup
   fontSize: 17,
@@ -48,7 +49,8 @@ export const prefs = {
   hlOutput: true,
   hlInput: false,
   panelSide: "right" as PanelSide,
-  handwriting: true,       // the pen writes each typed letter; off: letters appear at once
+  handwriting: true,
+  cursor: "bar" as CursorShape,       // the pen writes each typed letter; off: letters appear at once
   preset: "fountain",
   colors: { ...PRESETS.fountain.colors } as Colors,
 };

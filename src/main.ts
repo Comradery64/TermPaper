@@ -64,6 +64,11 @@ function xtermTheme() {
   };
 }
 
+/** Bar or block; an unfocused block shows as an outline. */
+function cursorOptions() {
+  return { cursorStyle: prefs.cursor, cursorInactiveStyle: prefs.cursor === "bar" ? "bar" : "outline" } as const;
+}
+
 const term = new Terminal({
   fontFamily: fontStack(),
   fontSize: prefs.fontSize,
@@ -71,8 +76,7 @@ const term = new Terminal({
   allowTransparency: true,
   allowProposedApi: true,   // decorations: typed-command highlighting
   cursorBlink: true,
-  cursorStyle: "underline",
-  cursorInactiveStyle: "underline",   // unfocused: same underscore, not an outline box
+  ...cursorOptions(),
   scrollback: 5000,
   theme: xtermTheme(),
 });
@@ -199,6 +203,7 @@ function settingsChanged(what: Changed) {
   if (what === "font") setFont(prefs.font);
   else if (what === "fontSize") setSize(prefs.fontSize);
   else if (what === "highlight") inputHl.update();
+  else if (what === "cursor") Object.assign(term.options, cursorOptions());
   else if (what === "colors") { term.options.theme = xtermTheme(); applyColors(); inputHl.update(); }
   lines.draw();
 }
