@@ -4,7 +4,7 @@
 
 A cross-platform terminal that looks like a sheet of ruled notebook paper. Monaspace Radon handwriting font (Victor Mono, Maple Mono, both also cursive, Illinois Mono, OpenDyslexic Mono and Comic Mono are in settings),
 fountain-pen-blue ink for what you type, charcoal for what the machine says, and an invisible pen that writes
-each letter.
+each letter (Handwriting in settings turns it off).
 
 Built on [xterm.js](https://xtermjs.org) + [Tauri v2](https://tauri.app) + [portable-pty](https://crates.io/crates/portable-pty).
 
@@ -25,7 +25,7 @@ Debug: `http://localhost:1430/?pen=slow` plays the handwriting at 1/20 speed.
 | Key | Action |
 |---|---|
 | Cmd/Ctrl + = / − / 0 | Font size up / down / reset (ruling re-locks) |
-| Cmd/Ctrl + , | Settings: font, size, line numbers (every row / each command / off), syntax highlighting (output on, typed commands off by default), ink theme presets with per-color pickers. Saved to `prefs.json` in the app config dir |
+| Cmd/Ctrl + , | Settings: font, handwriting on/off, size, line numbers (every row / each command / off), syntax highlighting (output on, typed commands off by default), ink theme presets with per-color pickers. Saved to `prefs.json` in the app config dir |
 | Cmd/Ctrl + Shift + F | Cycle font: Radon → Victor Mono → Victor Cursive → Maple Mono → Maple Cursive → Illinois → OpenDyslexic → Comic Mono (remembered; `?font=maple-cursive` in demo) |
 | Cmd+C / Cmd+V / Cmd+A | Copy / paste / select all (macOS Edit menu) |
 

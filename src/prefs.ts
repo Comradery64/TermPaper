@@ -48,6 +48,7 @@ export const prefs = {
   hlOutput: true,
   hlInput: false,
   panelSide: "right" as PanelSide,
+  handwriting: true,       // the pen writes each typed letter; off: letters appear at once
   preset: "fountain",
   colors: { ...PRESETS.fountain.colors } as Colors,
 };

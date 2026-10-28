@@ -246,7 +246,7 @@ let pending = 0;   // writes waiting in the queue
 let lastFast: Promise<void> = Promise.resolve();   // settles when xterm has parsed the latest fast-path write
 function enqueue(s: string) {
   if (!s) return;
-  const pen = typing && /^[\x21-\x7e]{1,4}$/.test(s);
+  const pen = prefs.handwriting && typing && /^[\x21-\x7e]{1,4}$/.test(s);
   // xterm keeps writes in order itself; only a pen stroke has to wait (for the cursor to settle)
   const write = () => { lastFast = new Promise((r) => term.write(s, r)); };
   if (!pen && pending === 0) return write();

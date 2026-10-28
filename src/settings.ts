@@ -20,6 +20,7 @@ export function openSettings(fonts: FontChoice[], onChange: (what: Changed) => v
       <h2>Settings</h2>
       <h3>Font</h3>
       <div class="fonts"></div>
+      <label class="check"><input type="checkbox" data-k="handwriting"> Handwriting <small>(the pen writes each letter you type)</small></label>
       <h3>Size</h3>
       <div class="size"><button data-d="-1">−</button><span></span><button data-d="1">+</button></div>
       <h3>Line numbers</h3>
