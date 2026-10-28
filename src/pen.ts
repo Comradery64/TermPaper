@@ -87,6 +87,10 @@ export function joinPath(d: PenData, prev: string, ch: string, adv: number, hand
   } else if (sy < -1.3 * xh) {
     // into a looped ascender: an upstroke that swings right of the stem and hooks into its top
     path += `C${f(ex + gap * 0.55)} ${f(Math.max(ey, -0.1 * xh))} ${f(sx + 0.18)} ${f(sy + 0.45)} ${f(sx)} ${f(sy)}`;
+  } else if (high && sy > -0.5 * xh) {
+    // from the midline into a letter entered low (l): down and round in a U, arriving along the
+    // baseline in the direction its first stroke leaves, instead of a V cusp at the entry
+    path += `C${f(ex + 0.05)} ${f(ey + 0.6 * (sy - ey))} ${f(sx - 0.16)} ${f(sy + 0.02)} ${f(sx)} ${f(sy)}`;
   } else if (high) {
     // from the midline: a level bridge, barely sagging, then down or across into the entry
     path += `C${f(ex + gap * 0.4)} ${f(ey + 0.05)} ${f(sx - gap * 0.35)} ${f(Math.min(sy, ey) + 0.05)} ${f(sx)} ${f(sy)}`;
