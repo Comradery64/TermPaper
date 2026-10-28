@@ -31,6 +31,8 @@ const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1
  *  - Otherwise a garland: a soft dip under the lower of the two ends.
  *  - The dot of i/j and the cross of t/f are written after the body, never joined.
  *  - No join into a capital, none between words, and digits don't join.
+ *  - x and z are break letters (Oak National Academy): joined to from the letter before,
+ *    never joined on to the next.
  * Pairs listed in joins.ts use their hand-drawn join instead (sourced rules there).
  * Points are em, y down from the baseline.
  */
@@ -75,6 +77,7 @@ function overlay(term: Terminal): SVGSVGElement | null {
  */
 const WORD_GAP_MS = 1200;   // a longer pause between letters ends the word
 const JOINS = /[A-Za-z]/;
+const BREAK = "xz";   // break letters: nothing joins on after them
 // k0: viewport row the group was drawn at; ends: col → where that letter's last stroke ended (x, y − baseline)
 type Joins = { g: SVGGElement; marker: IMarker; k0: number; ends: Map<number, [number, number, string]> };
 let word: (Joins & { row: number; col: number; end: [number, number]; prev: string; until: number; timer?: number }) | null = null;
@@ -114,7 +117,8 @@ function dropJoinsAt(line: number, col: number) {
 }
 /** End of a letter already on the page just left of `col`, so a new letter can join on to it. */
 function endBefore(term: Terminal, line: number, col: number, baseline: number): [number, number, string] | null {
-  if (!JOINS.test(term.buffer.active.getLine(line)?.getCell(col - 1)?.getChars() ?? "")) return null;
+  const c = term.buffer.active.getLine(line)?.getCell(col - 1)?.getChars() ?? "";
+  if (!JOINS.test(c) || BREAK.includes(c)) return null;
   for (const j of kept) {
     const e = !j.marker.isDisposed && j.marker.line === line ? j.ends.get(col - 1) : undefined;
     if (e) return [e[0], baseline + e[1], e[2]];
@@ -193,7 +197,7 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
     const toPx = (st: [number, number][]) => st.map(([x, y]) => [x0 + x * fs, baseline + y * fs]);
     const joins = cursive && JOINS.test(ch);
     const intoCapital = /[A-Z]/.test(ch);   // a capital starts with its own entry stroke
-    if (!joins || intoCapital || !word || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
+    if (!joins || intoCapital || !word || BREAK.includes(word.prev) || word.row !== buf.cursorY || word.col !== col || now + t > word.until) endWord();
 
     const lineAbs = buf.baseY + buf.cursorY;
     dropJoinsAt(lineAbs, col);   // retyping a cell: its old join goes
