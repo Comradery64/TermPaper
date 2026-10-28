@@ -29,14 +29,34 @@ fn spawn(window: tauri::WebviewWindow, state: State<PtyState>, cols: u16, rows: 
     cmd.env("TERM", "xterm-256color");
     cmd.env("TERM_PROGRAM", "TermPaper");
     let mut integrated = false;   // true when the shell will emit OSC 133 prompt marks
-    if shell.ends_with("zsh") {
-        if let Ok(dir) = install_zsh_integration(window.app_handle()) {
-            integrated = true;
-            if let Some(user) = std::env::var_os("ZDOTDIR") {
-                cmd.env("TERMPAPER_USER_ZDOTDIR", user);
+    let name = std::path::Path::new(&shell).file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let app = window.app_handle();
+    match name {
+        "zsh" => {
+            let files = [(".zshenv", include_str!("../shell/zsh/.zshenv")), (".zshrc", include_str!("../shell/zsh/.zshrc"))];
+            if let Ok(dir) = install_shim(app, "zsh", &files) {
+                integrated = true;
+                if let Some(user) = std::env::var_os("ZDOTDIR") {
+                    cmd.env("TERMPAPER_USER_ZDOTDIR", user);
+                }
+                cmd.env("ZDOTDIR", dir);
             }
-            cmd.env("ZDOTDIR", dir);
         }
+        "bash" => {
+            if let Ok(dir) = install_shim(app, "bash", &[("bashrc", include_str!("../shell/bash/bashrc"))]) {
+                integrated = true;
+                cmd.arg("--rcfile");
+                cmd.arg(dir.join("bashrc"));
+            }
+        }
+        "fish" => {
+            if let Ok(dir) = install_shim(app, "fish", &[("termpaper.fish", include_str!("../shell/fish/termpaper.fish"))]) {
+                integrated = true;
+                cmd.env("TERMPAPER_FISH_INIT", dir.join("termpaper.fish"));
+                cmd.args(["--init-command", "source $TERMPAPER_FISH_INIT"]);
+            }
+        }
+        _ => {}
     }
     if let Some(home) = std::env::var_os("HOME") {
         cmd.cwd(home);
@@ -86,18 +106,19 @@ fn resize(state: State<PtyState>, cols: u16, rows: u16) -> Result<(), String> {
     Ok(())
 }
 
-/// Write the bundled zsh shim to the app's own data dir (private to the user, unlike a
-/// temp dir another account could pre-create) and return it for ZDOTDIR.
-fn install_zsh_integration(app: &tauri::AppHandle) -> std::io::Result<std::path::PathBuf> {
-    let dir = app.path().app_data_dir().map_err(std::io::Error::other)?.join("zsh");
+/// Write a bundled shell shim to the app's own data dir (private to the user, unlike a
+/// temp dir another account could pre-create) and return the dir.
+fn install_shim(app: &tauri::AppHandle, shell: &str, files: &[(&str, &str)]) -> std::io::Result<std::path::PathBuf> {
+    let dir = app.path().app_data_dir().map_err(std::io::Error::other)?.join(shell);
     std::fs::create_dir_all(&dir)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     }
-    std::fs::write(dir.join(".zshenv"), include_str!("../shell/zsh/.zshenv"))?;
-    std::fs::write(dir.join(".zshrc"), include_str!("../shell/zsh/.zshrc"))?;
+    for (name, body) in files {
+        std::fs::write(dir.join(name), body)?;
+    }
     Ok(dir)
 }
 
