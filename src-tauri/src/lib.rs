@@ -131,16 +131,66 @@ fn traffic_lights(window: tauri::Window, visible: bool, duration: f64) {
 
 /// Settings live in the app's config dir so they persist across sessions; the
 /// webview's localStorage is keyed to the dev-server origin and resets when it changes.
+/// `settings.toml` sits next to `prefs.json` with the same keys, is meant to be edited by hand,
+/// and wins on load; every save from the Settings UI rewrites both.
+fn merge_settings(prefs_json: Option<&str>, toml_src: Option<&str>) -> Option<String> {
+    let mut base = prefs_json.and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        .filter(serde_json::Value::is_object).unwrap_or_else(|| serde_json::json!({}));
+    if let Some(src) = toml_src {
+        match toml::from_str::<serde_json::Value>(src) {
+            Ok(serde_json::Value::Object(over)) => {
+                let b = base.as_object_mut()?;
+                for (k, v) in over {
+                    match (b.get_mut(&k), v) {      // colors merge per role, everything else replaces
+                        (Some(serde_json::Value::Object(bm)), serde_json::Value::Object(om)) => bm.extend(om),
+                        (_, v) => { b.insert(k, v); }
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("settings.toml ignored: {e}"),
+        }
+    }
+    (prefs_json.is_some() || toml_src.is_some()).then(|| base.to_string())
+}
+
 #[tauri::command]
 fn load_prefs(app: tauri::AppHandle) -> Option<String> {
-    std::fs::read_to_string(app.path().app_config_dir().ok()?.join("prefs.json")).ok()
+    let dir = app.path().app_config_dir().ok()?;
+    let read = |f: &str| std::fs::read_to_string(dir.join(f)).ok();
+    merge_settings(read("prefs.json").as_deref(), read("settings.toml").as_deref())
 }
 
 #[tauri::command]
 fn save_prefs(app: tauri::AppHandle, json: String) -> Result<(), String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let toml = serde_json::from_str::<toml::Value>(&json).ok().and_then(|v| toml::to_string_pretty(&v).ok());
+    if let Some(t) = toml { std::fs::write(dir.join("settings.toml"), t).map_err(|e| e.to_string())?; }
     std::fs::write(dir.join("prefs.json"), json).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_settings;
+
+    #[test]
+    fn toml_overrides_prefs() {
+        let m = merge_settings(Some(r##"{"fontSize":17,"colors":{"ink":"#111111","flag":"#222222"}}"##),
+            Some("fontSize = 20\ncursor = \"block\"\n[colors]\nink = \"#abcdef\"\n")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&m).unwrap();
+        assert_eq!(v["fontSize"], 20);
+        assert_eq!(v["cursor"], "block");
+        assert_eq!(v["colors"]["ink"], "#abcdef");
+        assert_eq!(v["colors"]["flag"], "#222222");
+    }
+
+    #[test]
+    fn bad_toml_falls_back() {
+        let m = merge_settings(Some(r#"{"fontSize":17}"#), Some("fontSize = = oops")).unwrap();
+        assert_eq!(m, r#"{"fontSize":17}"#);
+        assert!(merge_settings(None, None).is_none());
+    }
 }
 
 /// Dock icon from the PNG embedded in the binary. A bare `target/debug` binary has no .app bundle,
