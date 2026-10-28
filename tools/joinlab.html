@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- Join lab: every pair of ?l=<letters> (default stioh, or just ?p=st,oh; ?f=0|1 one font; ?s= px per em) in both cursive fonts, drawn large with the
+     font's letters, the pen strokes (green dot: where the letter starts, red: where it ends), the
+     guide lines and the join from src/joins.ts. Open http://localhost:1430/tools/joinlab.html (pnpm dev). -->
+<meta charset="utf-8">
+<title>join lab</title>
+<style>
+  @font-face { font-family: "Victor Mono Cursive"; src: url("/fonts/VictorMono-Italic.woff2") format("woff2"); }
+  @font-face { font-family: "Maple Mono Cursive"; src: url("/fonts/MapleMono-Italic.woff2") format("woff2"); }
+  body { margin: 12px; font: 13px system-ui; color: #333; }
+  h2 { margin: 12px 0 4px; font-size: 15px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  figure { margin: 0; border: 1px solid #ddd; }
+  figcaption { padding: 2px 6px; background: #f4f4f4; }
+  .missing { color: #c00; }
+</style>
+<div id="out"></div>
+<script type="module">
+import { PAIR_JOINS } from "../src/joins";
+const FONTS = [["/pen-victor-cursive.json", "Victor Mono Cursive", 0.5455], ["/pen-maple-cursive.json", "Maple Mono Cursive", 0.6]];
+const q = new URLSearchParams(location.search);
+const letters = q.get("l") ?? "stioh";
+const S = +(q.get("s") ?? 100), W = 2.3 * S, H = 1.1 * S;   // px per em (?s=); figure size in px
+const out = document.getElementById("out");
+await document.fonts.load('10px "Victor Mono Cursive"'); await document.fonts.load('10px "Maple Mono Cursive"');
+for (const [url, family, adv] of FONTS.filter((_, i) => !q.has("f") || +q.get("f") === i)) {
+  const d = await (await fetch(url)).json();
+  const top = (ch) => Math.min(...d.glyphs[ch].flat().map((p) => p[1]));
+  const lines = [[0, "#999"], [top("x"), "#7ab"], [top("l"), "#7ab"], [(top("x") + top("l")) / 2, "#dcd"]];
+  out.insertAdjacentHTML("beforeend", `<h2>${family}</h2><div class="grid"></div>`);
+  const grid = out.lastElementChild;
+  const pairs = q.get("p")?.split(",") ?? [...letters].flatMap((a) => [...letters].map((b) => a + b));   // ?p=st,oh
+  for (const [a, b] of pairs) {
+    const pair = a + b, path = PAIR_JOINS[url]?.[pair];
+    const letter = (ch, dx) => {
+      const n = d.body?.[ch] ?? d.glyphs[ch].length;
+      return d.glyphs[ch].map((st, k) => `<polyline points="${st.map(([x, y]) => `${(x + dx) * S},${y * S}`).join(" ")}" fill="none" stroke="${k < n ? "#9ab" : "#ccc"}" stroke-width="1.5"/>`).join("")
+        + `<circle cx="${(d.glyphs[ch][0][0][0] + dx) * S}" cy="${d.glyphs[ch][0][0][1] * S}" r="${S / 30}" fill="#16a34a"/>`
+        + `<circle cx="${(d.glyphs[ch][n - 1].at(-1)[0] + dx) * S}" cy="${d.glyphs[ch][n - 1].at(-1)[1] * S}" r="${S / 30}" fill="#dc2626"/>`;
+    };
+    grid.insertAdjacentHTML("beforeend", `<figure><figcaption class="${path ? "" : "missing"}">${pair}${path ? "" : " (no join)"}</figcaption>
+      <svg width="${W}" height="${H}" viewBox="${-0.1 * S} ${-0.9 * S} ${W} ${H}">
+        ${lines.map(([y, c]) => `<line x1="${-0.1 * S}" x2="${W}" y1="${y * S}" y2="${y * S}" stroke="${c}" stroke-dasharray="3 3"/>`).join("")}
+        <text font-family="${family}" font-size="${S}" fill="#1f2a6b" opacity=".25"><tspan x="0" y="0">${a}</tspan><tspan x="${adv * S}" y="0">${b}</tspan></text>
+        ${letter(a, 0)}${letter(b, adv)}
+        ${path ? `<path d="${path}" transform="scale(${S})" fill="none" stroke="#e11d48" stroke-width="${2.5 / S}" stroke-linecap="round"/>` : ""}
+      </svg></figure>`);
+  }
+}
+document.title = "ready";
+</script>

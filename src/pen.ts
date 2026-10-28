@@ -6,6 +6,7 @@
  * turn with a round nib; the real glyph is written when the pen finishes.
  */
 import type { IMarker, Terminal } from "@xterm/xterm";
+import { PAIR_JOINS } from "./joins";
 
 type Stroke = [number, number][];
 let data: { w: number; asc: number; desc: number; body?: Record<string, number>; join?: Record<string, [P, P]>; glyphs: Record<string, Stroke[]> } | null = null;
@@ -30,6 +31,7 @@ const SLOW = new URLSearchParams(location.search).get("pen") === "slow" ? 20 : 1
  *  - Otherwise a garland: a soft dip under the lower of the two ends.
  *  - The dot of i/j and the cross of t/f are written after the body, never joined.
  *  - No join into a capital, none between words, and digits don't join.
+ * Pairs listed in joins.ts use their hand-drawn join instead (sourced rules there).
  * Points are em, y down from the baseline.
  */
 type P = [number, number];
@@ -43,11 +45,12 @@ function anchors(ch: string): { entry: P; exit: P; body: P[][]; marks: P[][] } |
 }
 
 let wantUrl = "";
+let pairs: Record<string, string> | undefined;   // hand-drawn joins for this font (joins.ts)
 export async function loadPen(url: string) {
   wantUrl = url;
   data = null;
   const d = await (await fetch(url)).json();
-  if (url === wantUrl) data = d;   // a slower, older load must not replace a newer font's strokes
+  if (url === wantUrl) { data = d; pairs = PAIR_JOINS[url]; }   // a slower, older load must not replace a newer font's strokes
 }
 
 function overlay(term: Terminal): SVGSVGElement | null {
@@ -211,7 +214,13 @@ export function penWrite(term: Terminal, text: string, ink: string, backlog = 0,
       const gap = sx - ex, f = (n: number) => n.toFixed(2);
       const xh = -Math.min(...data.glyphs.x.flat().map((p) => p[1])) * fs;   // midline height, px
       let d: string;
-      if (sy < baseline - 1.3 * xh) {
+      const hand = pairs?.[prev + ch];
+      if (hand) {
+        // hand-drawn (joins.ts): em from the left of the previous cell and the baseline
+        let k = 0;
+        const ox = x0 - advance(term, dims.width);
+        d = hand.replace(/-?\d*\.?\d+/g, (n) => f(k++ % 2 ? baseline + +n * fs : ox + +n * fs));
+      } else if (sy < baseline - 1.3 * xh) {
         // into a tall letter: an upstroke that swings right of the stem and hooks into its top
         d = `M${f(ex)} ${f(ey)}C${f(ex + gap * 0.55)} ${f(Math.max(ey, baseline - 0.1 * xh))} ${f(sx + 0.18 * fs)} ${f(sy + 0.45 * fs)} ${f(sx)} ${f(sy)}`;
       } else if ("bovwr".includes(prev) && Math.abs(sy - ey) < 0.5 * xh) {

@@ -46,6 +46,7 @@ src-tauri/src/lib.rs       spawn/write/resize PTY commands, zsh shim install, ma
 src-tauri/shell/zsh/       ZDOTDIR shim (.zshenv, .zshrc)
 tools/paper_texture.py     regenerates public/paper.png
 tools/pen_strokes.py       regenerates public/pen-strokes.json from the Radon TTF
+tools/joinlab.html         draws every cursive letter pair with its hand-drawn join (src/joins.ts); pnpm dev, open /tools/joinlab.html
 public/fonts/              Radon, Victor Mono, Maple Mono woff2; Illinois Mono, OpenDyslexic Mono, Comic Mono ttf/otf
 public/pen-*.json          handwriting strokes per font (tools/pen_strokes.py <ttf> <out>, TTFs in fonts-src/)
 ```
