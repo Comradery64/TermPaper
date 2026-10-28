@@ -90,6 +90,13 @@ export function joinPath(d: PenData, prev: string, ch: string, adv: number, hand
   } else if (high) {
     // from the midline: a level bridge, barely sagging, then down or across into the entry
     path += `C${f(ex + gap * 0.4)} ${f(ey + 0.05)} ${f(sx - gap * 0.35)} ${f(Math.min(sy, ey) + 0.05)} ${f(sx)} ${f(sy)}`;
+  } else if (ch === "x") {
+    // x: over the top like an n's hump, arriving along its first stroke, so the join and the
+    // stroke read as one curve instead of a third slash
+    const st = to.body[0], [x0, y0] = st[0];
+    const [x1, y1] = st.find(([x, y]) => Math.hypot(x - x0, y - y0) > 0.05) ?? st[1];
+    const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+    path += `C${f(ex + gap * 0.3)} ${f(ey)} ${f(sx - (x1 - x0) / len * 0.16)} ${f(sy - (y1 - y0) / len * 0.16)} ${f(sx)} ${f(sy)}`;
   } else {
     // from the baseline: an upstroke, leaving along the line and rising into the entry
     path += `C${f(ex + gap * 0.35)} ${f(ey)} ${f(sx - gap * 0.15)} ${f(sy + 0.35 * (ey - sy))} ${f(sx)} ${f(sy)}`;
